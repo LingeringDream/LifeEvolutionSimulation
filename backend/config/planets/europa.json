@@ -1,0 +1,13 @@
+{
+  "name": "Europa",
+  "gravity": 1.315,
+  "surface_temp": -160.0,
+  "albedo": 0.67,
+  "axial_tilt": 0.1,
+  "orbital_distance": 5.2,
+  "atmospheric_pressure": 0.0000001,
+  "co2_ratio": 0.0,
+  "ch4_ratio": 0.0,
+  "magnetic_field": 0.0,
+  "season_period": 1296
+}

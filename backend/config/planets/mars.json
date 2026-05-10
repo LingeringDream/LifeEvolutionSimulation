@@ -1,0 +1,13 @@
+{
+  "name": "Mars",
+  "gravity": 3.72,
+  "surface_temp": -60.0,
+  "albedo": 0.25,
+  "axial_tilt": 25.2,
+  "orbital_distance": 1.52,
+  "atmospheric_pressure": 0.006,
+  "co2_ratio": 0.95,
+  "ch4_ratio": 0.0,
+  "magnetic_field": 0.0,
+  "season_period": 687
+}

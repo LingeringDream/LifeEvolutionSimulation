@@ -1,0 +1,13 @@
+{
+  "name": "Titan",
+  "gravity": 1.35,
+  "surface_temp": -179.0,
+  "albedo": 0.22,
+  "axial_tilt": 26.7,
+  "orbital_distance": 9.5,
+  "atmospheric_pressure": 1.45,
+  "co2_ratio": 0.0,
+  "ch4_ratio": 0.05,
+  "magnetic_field": 0.0,
+  "season_period": 10759
+}

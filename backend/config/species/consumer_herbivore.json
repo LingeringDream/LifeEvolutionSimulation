@@ -1,0 +1,15 @@
+{
+  "name": "Herbivore",
+  "metabolic_type": "heterotrophy",
+  "body_size": 2.0,
+  "temp_optimum": 20.0,
+  "temp_tolerance": 30.0,
+  "reproduction_rate": 0.4,
+  "reproduction_cost": 2.0,
+  "defense": 0.2,
+  "mobility": 0.6,
+  "sensory_range": 5.0,
+  "diet_preference": "consumer",
+  "lifespan": 400,
+  "adaptability": 0.3
+}

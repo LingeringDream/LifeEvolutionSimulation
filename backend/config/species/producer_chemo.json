@@ -1,0 +1,15 @@
+{
+  "name": "Chemo-Producer",
+  "metabolic_type": "chemosynthesis",
+  "body_size": 0.3,
+  "temp_optimum": -100.0,
+  "temp_tolerance": 80.0,
+  "reproduction_rate": 0.8,
+  "reproduction_cost": 0.4,
+  "defense": 0.02,
+  "mobility": 0.0,
+  "sensory_range": 1.0,
+  "diet_preference": "producer",
+  "lifespan": 1200,
+  "adaptability": 0.4
+}

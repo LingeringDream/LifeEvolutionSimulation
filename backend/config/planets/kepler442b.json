@@ -1,0 +1,13 @@
+{
+  "name": "Kepler-442b",
+  "gravity": 12.16,
+  "surface_temp": -2.0,
+  "albedo": 0.3,
+  "axial_tilt": 15.0,
+  "orbital_distance": 0.409,
+  "atmospheric_pressure": 1.5,
+  "co2_ratio": 0.01,
+  "ch4_ratio": 0.001,
+  "magnetic_field": 1.2,
+  "season_period": 112
+}
