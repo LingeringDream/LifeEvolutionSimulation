@@ -159,7 +159,7 @@ class Environment:
             self.volcanic_heat += 20.0 * np.exp(-dist ** 2 / (2 * radius ** 2))
 
     def advance_season(self, ticks: int = 1):
-        self.tick_count += ticks
+        self.update(ticks=ticks)
 
     def update(self, ticks: int = 1, biomass_heat: np.ndarray | None = None):
         self.tick_count += ticks
