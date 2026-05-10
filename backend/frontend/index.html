@@ -140,11 +140,25 @@ function Setup({onStart,onClose,visible}){
   const[p,setP]=useState('titan'),[pr,setPr]=useState(2),[co,setCo]=useState(1),[gr,setGr]=useState(50);
   const[ai,setAi]=useState(''),[am,setAm]=useState(''),[ab,setAb]=useState(''),[ak,setAk]=useState(''),[aii,setAii]=useState(60);
   const[custom,setCustom]=useState({...PLANET_PRESETS.titan,planet_name:'Custom Planet'});
+  const[envCfg,setEnvCfg]=useState(null);
+
+  // Load .env config on mount
+  useEffect(()=>{fetch('/api/config').then(r=>r.json()).then(c=>{
+    setEnvCfg(c);
+    if(c.provider){setAi(c.provider)}
+    if(c.ai_interval){setAii(c.ai_interval)}
+    if(c.provider==='openai'){setAm(c.openai_model||'');if(c.openai_key_set)setAk(c.openai_key_preview)}
+    if(c.provider==='claude'){setAm(c.claude_model||'');if(c.claude_key_set)setAk(c.claude_key_preview)}
+    if(c.provider==='custom'){setAm(c.custom_model||'');setAb(c.custom_base_url||'');if(c.custom_key_set)setAk(c.custom_key_preview)}
+  }).catch(()=>{})},[]);
+
   if(!visible)return null;
 
   const isCustom=p==='custom';
   const go=()=>{
-    const body={producers:pr,consumers:co,grid_size:gr,ai:ai||null,ai_model:am||null,ai_base_url:ab||null,ai_key:ak||null,ai_interval:aii};
+    // Don't send masked key preview — let backend use .env
+    const isMasked=envCfg&&(ak===envCfg.openai_key_preview||ak===envCfg.claude_key_preview||ak===envCfg.custom_key_preview);
+    const body={producers:pr,consumers:co,grid_size:gr,ai:ai||null,ai_model:am||null,ai_base_url:ab||null,ai_key:isMasked?null:(ak||null),ai_interval:aii};
     if(isCustom){body.planet='custom';body.custom_planet={...custom,name:custom.planet_name}}
     else{body.planet=p}
     onStart(body);

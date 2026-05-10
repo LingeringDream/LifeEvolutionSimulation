@@ -113,6 +113,30 @@ async def list_planets():
     return _list()
 
 
+@app.get("/api/config")
+async def get_config():
+    """Return AI config from .env (key masked)."""
+    import os
+    def mask(key):
+        if not key: return ""
+        return key[:6] + "..." + key[-4:] if len(key) > 12 else "***"
+
+    return {
+        "provider": os.environ.get("AI_PROVIDER", ""),
+        "openai_model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "openai_key_set": bool(os.environ.get("OPENAI_API_KEY")),
+        "openai_key_preview": mask(os.environ.get("OPENAI_API_KEY", "")),
+        "claude_model": os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+        "claude_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "claude_key_preview": mask(os.environ.get("ANTHROPIC_API_KEY", "")),
+        "custom_base_url": os.environ.get("CUSTOM_API_BASE_URL", ""),
+        "custom_model": os.environ.get("CUSTOM_MODEL", ""),
+        "custom_key_set": bool(os.environ.get("CUSTOM_API_KEY")),
+        "custom_key_preview": mask(os.environ.get("CUSTOM_API_KEY", "")),
+        "ai_interval": int(os.environ.get("AI_INTERVAL", "60")),
+    }
+
+
 # ── Data export endpoints ──────────────────────────────────────
 
 @app.get("/api/runs")
