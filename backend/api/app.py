@@ -46,7 +46,10 @@ class StartRequest(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 async def index():
     html_path = FRONTEND_DIR / "index.html"
-    return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        content=html_path.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
 
 @app.get("/favicon.ico")
 async def favicon():

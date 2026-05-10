@@ -138,27 +138,20 @@ const PLANET_PRESETS={
 
 function Setup({onStart,onClose,visible}){
   const[p,setP]=useState('titan'),[pr,setPr]=useState(2),[co,setCo]=useState(1),[gr,setGr]=useState(50);
-  const[ai,setAi]=useState(''),[am,setAm]=useState(''),[ab,setAb]=useState(''),[ak,setAk]=useState(''),[aii,setAii]=useState(60);
   const[custom,setCustom]=useState({...PLANET_PRESETS.titan,planet_name:'Custom Planet'});
   const[envCfg,setEnvCfg]=useState(null);
-
-  // Load .env config on mount
+  const[aiSel,setAiSel]=useState('');
   useEffect(()=>{fetch('/api/config').then(r=>r.json()).then(c=>{
     setEnvCfg(c);
-    if(c.provider){setAi(c.provider)}
-    if(c.ai_interval){setAii(c.ai_interval)}
-    if(c.provider==='openai'){setAm(c.openai_model||'');if(c.openai_key_set)setAk(c.openai_key_preview)}
-    if(c.provider==='claude'){setAm(c.claude_model||'');if(c.claude_key_set)setAk(c.claude_key_preview)}
-    if(c.provider==='custom'){setAm(c.custom_model||'');setAb(c.custom_base_url||'');if(c.custom_key_set)setAk(c.custom_key_preview)}
+    if(c.provider)setAiSel(c.provider);
   }).catch(()=>{})},[]);
 
   if(!visible)return null;
 
   const isCustom=p==='custom';
   const go=()=>{
-    // Don't send masked key preview — let backend use .env
-    const isMasked=envCfg&&(ak===envCfg.openai_key_preview||ak===envCfg.claude_key_preview||ak===envCfg.custom_key_preview);
-    const body={producers:pr,consumers:co,grid_size:gr,ai:ai||null,ai_model:am||null,ai_base_url:ab||null,ai_key:isMasked?null:(ak||null),ai_interval:aii};
+    const c=envCfg||{};
+    const body={producers:pr,consumers:co,grid_size:gr,ai:aiSel||null,ai_model:null,ai_key:null,ai_base_url:null,ai_interval:c.ai_interval||60};
     if(isCustom){body.planet='custom';body.custom_planet={...custom,name:custom.planet_name}}
     else{body.planet=p}
     onStart(body);
@@ -167,13 +160,12 @@ function Setup({onStart,onClose,visible}){
   const C=custom;const setC=(k,v)=>setCustom({...C,[k]:v});
 
   return <div className="ov">
-    <div className="pnl" style={{maxHeight:'85vh',overflowY:'auto'}}>
+    <div className="pnl">
       <h2>新建模拟</h2>
-      <div className="fr"><label>星球</label><select value={p} onChange={e=>{setP(e.target.value)}}>
+      <div className="fr"><label>星球</label><select value={p} onChange={e=>setP(e.target.value)}>
         <option value="titan">土卫六 Titan (-179°C)</option><option value="mars">火星 Mars (-60°C)</option>
         <option value="europa">木卫二 Europa (-160°C)</option><option value="kepler442b">开普勒-442b (-2°C)</option>
         <option value="custom">自定义星球...</option></select></div>
-
       {isCustom&&<div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:12}}>
         <div style={{fontSize:13,color:'var(--orange)',fontWeight:600,marginBottom:8}}>星球参数</div>
         <div className="fr"><label>名称</label><input value={C.planet_name} onChange={e=>setC('planet_name',e.target.value)}/></div>
@@ -192,20 +184,16 @@ function Setup({onStart,onClose,visible}){
             onClick={()=>setCustom({...v,planet_name:v.name})}>{v.name}</button>)}
         </div>
       </div>}
-
       <div className="fr"><label>生产者</label><input type="number" value={pr} min={1} max={5} onChange={e=>setPr(+e.target.value)}/></div>
       <div className="fr"><label>消费者</label><input type="number" value={co} min={0} max={5} onChange={e=>setCo(+e.target.value)}/></div>
       <div className="fr"><label>网格大小</label><select value={gr} onChange={e=>setGr(+e.target.value)}>
         <option value={30}>30×30</option><option value={50}>50×50</option><option value={80}>80×80</option></select></div>
-      <div className="ai-s">
-        <h3>AI 演化引擎（可选）</h3>
-        <div className="fr"><label>服务商</label><select value={ai} onChange={e=>setAi(e.target.value)}>
-          <option value="">不使用</option><option value="openai">OpenAI</option><option value="claude">Claude</option><option value="custom">自定义</option></select></div>
-        <div className="fr"><label>模型</label><input placeholder="gpt-4o-mini" value={am} onChange={e=>setAm(e.target.value)}/></div>
-        <div className="fr"><label>地址</label><input placeholder="https://api.deepseek.com/v1" value={ab} onChange={e=>setAb(e.target.value)}/></div>
-        <div className="fr"><label>密钥</label><input type="password" placeholder="sk-..." value={ak} onChange={e=>setAk(e.target.value)}/></div>
-        <div className="fr"><label>间隔</label><input type="number" value={aii} min={10} max={500} onChange={e=>setAii(+e.target.value)}/></div>
-      </div>
+      <div className="fr"><label>AI 引擎</label><select value={aiSel} onChange={e=>setAiSel(e.target.value)}>
+        <option value="">不使用</option>
+        {envCfg&&envCfg.openai_key_set&&<option value="openai">OpenAI ({envCfg.openai_model})</option>}
+        {envCfg&&envCfg.claude_key_set&&<option value="claude">Claude ({envCfg.claude_model})</option>}
+        {envCfg&&envCfg.custom_key_set&&<option value="custom">{envCfg.custom_model||'Custom'} ({envCfg.custom_base_url})</option>}
+      </select></div>
       <button className="go" onClick={go}>开始模拟</button>
       <button style={{width:'100%',padding:'8px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:7,cursor:'pointer',fontSize:13,marginTop:6}} onClick={()=>onClose()}>取消</button>
     </div>
