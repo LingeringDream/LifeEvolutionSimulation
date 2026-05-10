@@ -91,6 +91,100 @@ async def list_planets():
     return _list()
 
 
+# ── Data export endpoints ──────────────────────────────────────
+
+@app.get("/api/runs")
+async def api_list_runs():
+    return sim.list_runs()
+
+
+@app.get("/api/runs/{run_id}")
+async def api_get_run(run_id: int):
+    run = sim.get_run(run_id)
+    if not run:
+        return {"error": "Run not found"}
+    return run
+
+
+@app.get("/api/runs/{run_id}/snapshots")
+async def api_get_snapshots(run_id: int):
+    return sim.get_snapshots(run_id)
+
+
+@app.get("/api/runs/{run_id}/species")
+async def api_get_species_history(run_id: int, species_id: str | None = None):
+    return sim.get_species_history(run_id, species_id)
+
+
+@app.get("/api/runs/{run_id}/events")
+async def api_get_events(run_id: int):
+    return sim.get_events(run_id)
+
+
+@app.post("/api/runs/{run_id}/export/csv")
+async def api_export_csv(run_id: int):
+    import tempfile
+    out_dir = tempfile.mkdtemp(prefix="evo_export_")
+    files = sim.export_csv(run_id, out_dir)
+    return {"status": "ok", "files": files, "dir": out_dir}
+
+
+@app.post("/api/runs/{run_id}/export/json")
+async def api_export_json(run_id: int):
+    import tempfile
+    out_path = tempfile.mktemp(prefix=f"run_{run_id}_", suffix=".json")
+    path = sim.export_json(run_id, out_path)
+    return {"status": "ok", "file": path}
+
+
+# ── Save / Load endpoints ──────────────────────────────────────
+
+class SaveRequest(BaseModel):
+    name: str = ""
+
+class LoadRequest(BaseModel):
+    save_id: str
+    ai: str | None = None
+    ai_model: str | None = None
+    ai_key: str | None = None
+    ai_base_url: str | None = None
+
+class AutoSaveRequest(BaseModel):
+    enabled: bool = True
+    interval: int = 500
+
+@app.get("/api/saves")
+async def api_list_saves():
+    return sim.list_saves()
+
+@app.post("/api/saves")
+async def api_save(req: SaveRequest):
+    save_id = sim.save(name=req.name)
+    if save_id:
+        return {"status": "ok", "save_id": save_id}
+    return {"status": "error", "message": "No running simulation"}
+
+@app.post("/api/saves/load")
+async def api_load_save(req: LoadRequest):
+    ai_provider = None
+    if req.ai:
+        ai_provider = create_ai_provider(provider=req.ai, api_key=req.ai_key, model=req.ai_model, base_url=req.ai_base_url)
+    ok = sim.load(req.save_id, ai_provider=ai_provider)
+    if ok:
+        return {"status": "ok"}
+    return {"status": "error", "message": "Failed to load save"}
+
+@app.delete("/api/saves/{save_id}")
+async def api_delete_save(save_id: str):
+    ok = sim.delete_save(save_id)
+    return {"status": "ok" if ok else "error"}
+
+@app.post("/api/simulation/auto-save")
+async def api_set_auto_save(req: AutoSaveRequest):
+    sim.set_auto_save(req.enabled, req.interval)
+    return {"enabled": req.enabled, "interval": req.interval}
+
+
 # ── WebSocket (concurrent send/receive) ────────────────────────
 
 @app.websocket("/ws/simulation")

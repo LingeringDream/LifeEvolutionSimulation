@@ -349,3 +349,79 @@ class SimulationEngine:
             ],
             "ai_narratives": self.ai_narratives[-5:],
         }
+
+    @staticmethod
+    def from_save(data: dict, ai_provider: AIProvider | None = None) -> SimulationEngine:
+        """Reconstruct a SimulationEngine from save data.
+
+        Args:
+            data: Dict from saves.load_simulation().
+            ai_provider: Optional AI provider to attach.
+
+        Returns:
+            A fully restored SimulationEngine.
+        """
+        config = PlanetConfig(**data["config"])
+        grid_size = data.get("grid_size", 50)
+
+        engine = SimulationEngine(
+            config=config,
+            grid_size=grid_size,
+            ai_provider=ai_provider,
+        )
+        engine.tick = data.get("tick", 0)
+        engine._species_counter = data.get("species_counter", 0)
+        engine.ai_narratives = data.get("narratives", [])
+
+        # Restore environment
+        env_data = data["environment"]
+        engine.env.temperature = np.array(env_data["temperature"])
+        engine.env.resources = np.array(env_data["resources"])
+        engine.env.light = np.array(env_data["light"])
+        engine.env.water = np.array(env_data["water"])
+        engine.env.volcanic_heat = np.array(env_data["volcanic_heat"])
+        engine.env.atmosphere = env_data["atmosphere"]
+        engine.env.tick_count = env_data.get("tick_count", engine.tick)
+
+        # Restore species
+        from simulation.models import Genome
+        for sp_data in data.get("species", []):
+            genes = {}
+            for k, v in sp_data["genes"].items():
+                if v["type"] == "float":
+                    genes[k] = Gene(
+                        value=v["value"],
+                        min_value=v["min"],
+                        max_value=v["max"],
+                        mutation_rate=v["mut_rate"],
+                        dominance=v["dom"],
+                    )
+                else:
+                    genes[k] = v["value"]
+
+            genome = Genome(
+                genes=genes,
+                generation=sp_data.get("generation", 0),
+                parent_ids=sp_data.get("parent_ids", []),
+            )
+
+            sp = Species(
+                id=sp_data["id"],
+                name=sp_data["name"],
+                genome=genome,
+                biomass=np.array(sp_data["biomass"]),
+                ancestor_id=sp_data.get("ancestor_id"),
+                color=tuple(sp_data.get("color", (100, 200, 100))),
+            )
+            engine.add_species(sp)
+
+        # Restore events
+        for ev_data in data.get("events", []):
+            engine.events.append(EvolutionEvent(
+                tick=ev_data["tick"],
+                event_type=ev_data["type"],
+                description=ev_data["desc"],
+                details=ev_data.get("details", {}),
+            ))
+
+        return engine

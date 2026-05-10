@@ -75,16 +75,17 @@ function WorldCanvas({state,layer}){
     if(layer==='temperature'){grid=state.temperature;cm=tempColor}
     else if(layer==='resources'){grid=state.resources;cm=resColor}
     else{grid=state.total_biomass;cm=bioColor}
-    if(!grid)return;
+    if(!grid||!grid.length||!grid[0])return;
     for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
       ctx.fillStyle=cm(grid[y][x]);
       ctx.fillRect(x*cw,y*ch,cw+.5,ch+.5);
     }
     if(layer==='biomass'&&state.species_layers){
       for(const[,l]of Object.entries(state.species_layers)){
+        if(!l.biomass||!l.biomass[0])continue;
         ctx.fillStyle=`rgb(${l.color.join(',')})`;
         for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
-          const v=l.biomass[y][x];
+          const v=l.biomass[y]?l.biomass[y][x]:0;
           if(v>0.05){
             const r=Math.min(cw,ch)*0.3*Math.min(v,3);
             ctx.beginPath();ctx.arc(x*cw+cw/2,y*ch+ch/2,Math.max(1,r),0,Math.PI*2);ctx.fill();
@@ -170,6 +171,20 @@ function App(){
   const h=useRef({ticks:[],pops:{},divs:[],temps:[],co2s:[]});
   const[,bump]=useState(0);
   const wsRef=useRef(null);
+  const[runId,setRunId]=useState(null);
+  const[runs,setRuns]=useState([]);
+  const[exportMsg,setExportMsg]=useState('');
+  const[saves,setSaves]=useState([]);
+  const[showLoad,setShowLoad]=useState(false);
+  const[saveMsg,setSaveMsg]=useState('');
+  const[autoSave,setAutoSave]=useState(false);
+
+  const loadSaves=useCallback(async()=>{try{const r=await fetch('/api/saves');setSaves(await r.json())}catch(e){}},[]);
+
+  // Load run history
+  const loadRuns=useCallback(async()=>{
+    try{const r=await fetch('/api/runs');const d=await r.json();setRuns(d)}catch(e){}
+  },[]);
 
   useEffect(()=>{
     const connect=()=>{
@@ -184,6 +199,8 @@ function App(){
       ws.onclose=()=>{console.log('WS disconnected, reconnecting...');setTimeout(connect,2000)};
     };
     connect();
+    loadRuns();
+    loadSaves();
   },[]);
 
   const send=useCallback((a,extra={})=>{
@@ -194,7 +211,7 @@ function App(){
   const onState=useCallback(s=>{
     setRunning(s.running);setTick(s.tick);setSpeed(s.speed);setSpecies(s.species||[]);
     setEnv(s.environment||{});setEvents(s.events||[]);
-    // Grid data is embedded in state now
+    if(s.run_id) setRunId(s.run_id);
     if(s.grid_size) setStateData(s);
     const hr=h.current;
     hr.ticks.push(s.tick);if(hr.ticks.length>500)hr.ticks.shift();
@@ -218,7 +235,7 @@ function App(){
   },[]);
 
   const toggle=()=>{
-    if(running){send('pause');setRunning(false)}
+    if(running){send('pause');setRunning(false);setTimeout(loadRuns,1000)}
     else{send('resume');setRunning(true)}
   };
 
@@ -237,8 +254,11 @@ function App(){
           <option value="biomass">生物量</option><option value="temperature">温度</option><option value="resources">资源</option>
         </select>
         <button onClick={()=>setSetup(true)}>新建</button>
+        <button onClick={async()=>{try{const r=await fetch('/api/saves',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:`存档 tick ${tick}`})});const d=await r.json();setSaveMsg('已保存: '+d.save_id);setTimeout(()=>setSaveMsg(''),3000);loadSaves()}catch(e){setSaveMsg('保存失败')}}}>存档</button>
+        <button onClick={()=>{loadSaves();setShowLoad(true)}}>读档</button>
       </div>
     </header>
+    {saveMsg&&<div style={{position:'fixed',top:60,right:20,background:'var(--green)',color:'#000',padding:'6px 12px',borderRadius:6,fontSize:12,zIndex:200}}>{saveMsg}</div>}
 
     <WorldCanvas state={stateData} layer={layer}/>
 
@@ -257,10 +277,52 @@ function App(){
       </div>
       <h3>事件日志</h3>
       <div className="el">{events.slice(-8).reverse().map((e,i)=><div key={i}><b>[{e.tick}]</b> {e.type==='extinction'?'灭绝':e.type==='mutation'?'突变':e.type==='speciation'?'物种形成':e.type==='ai_narrative'?'AI叙事':e.type}: {e.desc}</div>)}</div>
+      {runId&&<><h3>数据导出</h3>
+        <div style={{display:'flex',gap:4,marginBottom:8}}>
+          <button style={{flex:1,padding:'5px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:11}}
+            onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/csv`,{method:'POST'});const d=await r.json();setExportMsg('CSV 已保存: '+d.dir);setTimeout(()=>setExportMsg(''),5000)}catch(e){setExportMsg('导出失败')}}}>导出 CSV</button>
+          <button style={{flex:1,padding:'5px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:11}}
+            onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/json`,{method:'POST'});const d=await r.json();setExportMsg('JSON 已保存: '+d.file);setTimeout(()=>setExportMsg(''),5000)}catch(e){setExportMsg('导出失败')}}}>导出 JSON</button>
+        </div>
+        {exportMsg&&<div style={{fontSize:11,color:'var(--green)',marginBottom:8}}>{exportMsg}</div>}
+      </>}
+      <h3>历史记录</h3>
+      <div className="el">{runs.slice(0,10).map(r=><div key={r.id} style={{cursor:'pointer'}} onClick={()=>window.open(`/api/runs/${r.id}/snapshots`,'_blank')}>
+        <b>#{r.id}</b> {r.planet} | {r.total_ticks||'…'} 步 | {r.status}
+      </div>)}</div>
+      <h3>自动存档</h3>
+      <label style={{fontSize:12,display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
+        <input type="checkbox" checked={autoSave} onChange={e=>{
+          setAutoSave(e.target.checked);
+          fetch('/api/simulation/auto-save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:e.target.checked,interval:500})});
+        }}/>
+        每 500 步自动存档
+      </label>
     </div>
 
     <Charts h={h.current}/>
     <Setup visible={setup} onStart={startSim}/>
+
+    {/* Load dialog */}
+    {showLoad&&<div className="ov" onClick={()=>setShowLoad(false)}>
+      <div className="pnl" onClick={e=>e.stopPropagation()} style={{maxHeight:'70vh',overflowY:'auto'}}>
+        <h2>读取存档</h2>
+        {saves.length===0&&<div style={{color:'var(--text2)',fontSize:13,marginBottom:12}}>暂无存档</div>}
+        {saves.map(s=><div key={s.id} style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:6,padding:'10px 12px',marginBottom:6,display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <div>
+            <div style={{fontWeight:600,fontSize:13}}>{s.name}</div>
+            <div style={{fontSize:11,color:'var(--text2)'}}>{s.planet} | 第 {s.tick} 步 | {s.n_species} 物种 | {s.auto?'自动':'手动'}</div>
+          </div>
+          <div style={{display:'flex',gap:4}}>
+            <button style={{background:'var(--accent)',color:'#000',border:'none',borderRadius:4,padding:'4px 10px',cursor:'pointer',fontSize:11}}
+              onClick={async()=>{await fetch('/api/saves/load',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({save_id:s.id})});setShowLoad(false);h.current={ticks:[],pops:{},divs:[],temps:[],co2s:[]}}}>加载</button>
+            <button style={{background:'var(--red)',color:'#fff',border:'none',borderRadius:4,padding:'4px 10px',cursor:'pointer',fontSize:11}}
+              onClick={async()=>{await fetch(`/api/saves/${s.id}`,{method:'DELETE'});loadSaves()}}>删除</button>
+          </div>
+        </div>)}
+        <button style={{width:'100%',padding:'8px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:6,cursor:'pointer',marginTop:8}} onClick={()=>setShowLoad(false)}>关闭</button>
+      </div>
+    </div>}
   </div>;
 }
 

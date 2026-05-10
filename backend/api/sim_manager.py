@@ -9,6 +9,14 @@ from simulation.engine import SimulationEngine
 from simulation.species import Species
 from simulation.templates import load_planet_config, load_species_template
 from ai.provider import AIProvider
+from data.database import (
+    init_db, create_run, finish_run, save_snapshot, save_events,
+    list_runs, get_run, get_snapshots, get_species_history, get_events,
+    export_run_csv, export_run_json,
+)
+from data.saves import save_simulation, load_simulation, list_saves, delete_save
+
+SNAPSHOT_INTERVAL = 10  # Save to DB every N ticks
 
 
 class SimManager:
@@ -21,6 +29,16 @@ class SimManager:
         self._speed = 10
         self._ws_clients: list[asyncio.Queue] = []
         self._loop: asyncio.AbstractEventLoop | None = None
+        self._run_id: int | None = None
+        self._last_snapshot_tick: int = 0
+        self._planet_name: str = ""
+        self._grid_size: int = 50
+        self._auto_save: bool = False
+        self._auto_save_interval: int = 500
+        self._last_auto_save_tick: int = 0
+
+        # Init database
+        init_db()
 
     # ── lifecycle ──────────────────────────────────────────────
 
@@ -38,6 +56,9 @@ class SimManager:
             time.sleep(0.2)
 
         config = load_planet_config(planet)
+        self._planet_name = planet
+        self._grid_size = grid_size
+
         self.engine = SimulationEngine(
             config=config,
             grid_size=grid_size,
@@ -54,20 +75,40 @@ class SimManager:
             sp = Species.create(f"consumer_{i}", f"Consumer-{i}", genome, grid_size=grid_size, seed_area="random")
             self.engine.add_species(sp)
 
+        # Create DB run record
+        ai_name = type(ai_provider).__name__ if ai_provider else None
+        ai_model = getattr(ai_provider, 'model', None) if ai_provider else None
+        self._run_id = create_run(
+            planet=planet, grid_size=grid_size, producers=producers, consumers=consumers,
+            ai_provider=ai_name, ai_model=ai_model, ai_interval=ai_interval if ai_provider else None,
+        )
+        self._last_snapshot_tick = 0
+
         self._running = True
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
 
     def stop(self):
         self._running = False
+        if self._run_id and self.engine:
+            finish_run(self._run_id, self.engine.tick)
 
     def pause(self):
         self._running = False
-        # Immediately broadcast paused state
+        if self._run_id and self.engine:
+            # Save final snapshot on pause
+            self._save_current_snapshot()
+            finish_run(self._run_id, self.engine.tick)
         self._schedule_broadcast(self._build_broadcast())
 
     def resume(self):
         if self.engine and not self._running:
+            # Create new run record for resumed session
+            self._run_id = create_run(
+                planet=self._planet_name, grid_size=self._grid_size,
+                producers=0, consumers=0, config_json='{"resumed": true}',
+            )
+            self._last_snapshot_tick = self.engine.tick
             self._running = True
             self._thread = threading.Thread(target=self._run_loop, daemon=True)
             self._thread.start()
@@ -85,7 +126,6 @@ class SimManager:
             self._ws_clients.remove(queue)
 
     def _schedule_broadcast(self, data: dict):
-        """Thread-safe broadcast scheduling."""
         if self._loop and self._loop.is_running():
             self._loop.call_soon_threadsafe(self._do_broadcast, data)
         else:
@@ -97,7 +137,6 @@ class SimManager:
             try:
                 q.put_nowait(payload)
             except asyncio.QueueFull:
-                # Drop oldest to make room
                 try:
                     q.get_nowait()
                 except asyncio.QueueEmpty:
@@ -120,6 +159,14 @@ class SimManager:
             else:
                 self.engine.step()
 
+            # Save snapshot to DB periodically
+            if self._run_id and (self.engine.tick - self._last_snapshot_tick >= SNAPSHOT_INTERVAL):
+                self._save_current_snapshot()
+
+            # Auto-save
+            if self._auto_save and self.engine.tick - self._last_auto_save_tick >= self._auto_save_interval:
+                self._do_auto_save()
+
             snapshot = self._build_broadcast()
             self._schedule_broadcast(snapshot)
 
@@ -129,15 +176,51 @@ class SimManager:
 
         # Final broadcast with running=False
         if self.engine:
+            self._save_current_snapshot()
             final = self._build_broadcast()
             final["running"] = False
             self._schedule_broadcast(final)
+
+    def _save_current_snapshot(self):
+        """Save current engine state to database."""
+        eng = self.engine
+        if not eng or not self._run_id:
+            return
+
+        species_data = []
+        for sp in eng.species_list:
+            if not sp.is_alive():
+                continue
+            species_data.append({
+                "id": sp.id,
+                "name": sp.name,
+                "biomass": round(sp.total_biomass(), 3),
+                "metabolic_type": sp.genome.get_enum("metabolic_type"),
+                "genes": {
+                    k: round(v.value, 3) if hasattr(v, "value") else v
+                    for k, v in sp.genome.genes.items()
+                },
+            })
+
+        events_data = [
+            {"tick": e.tick, "type": e.event_type, "desc": e.description}
+            for e in eng.events[-20:]
+        ]
+
+        try:
+            save_snapshot(self._run_id, eng.tick, eng.env.get_snapshot(), species_data, events_data)
+            save_events(self._run_id, events_data)
+            self._last_snapshot_tick = eng.tick
+        except Exception as e:
+            print(f"[DB] Snapshot save error: {e}")
 
     def _build_broadcast(self) -> dict:
         eng = self.engine
         if eng is None:
             return {"type": "state", "tick": 0, "running": False, "speed": self._speed,
-                    "species": [], "environment": {}, "events": [], "narratives": []}
+                    "species": [], "environment": {}, "events": [], "narratives": [],
+                    "grid_size": self._grid_size, "total_biomass": [], "temperature": [],
+                    "resources": [], "species_layers": {}, "run_id": None}
 
         species_data = []
         for sp in eng.species_list:
@@ -155,7 +238,6 @@ class SimManager:
                 },
             })
 
-        # Include grid data in every broadcast (for canvas rendering)
         total_biomass = np.zeros((eng.grid_size, eng.grid_size))
         species_layers = {}
         for sp in eng.species_list:
@@ -179,20 +261,87 @@ class SimManager:
                 for e in eng.events[-20:]
             ],
             "narratives": eng.ai_narratives[-5:],
-            # Grid data for canvas
             "grid_size": eng.grid_size,
             "total_biomass": total_biomass.tolist(),
             "temperature": eng.env.temperature.tolist(),
             "resources": eng.env.resources.tolist(),
             "species_layers": species_layers,
+            "run_id": self._run_id,
         }
 
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
 
     def get_state(self) -> dict:
-        """Return current state as a dict (for REST polling / initial WS message)."""
         return self._build_broadcast()
+
+    # ── data access ────────────────────────────────────────────
+
+    def list_runs(self) -> list[dict]:
+        return list_runs()
+
+    def get_run(self, run_id: int) -> dict | None:
+        return get_run(run_id)
+
+    def get_snapshots(self, run_id: int) -> list[dict]:
+        return get_snapshots(run_id)
+
+    def get_species_history(self, run_id: int, species_id: str | None = None) -> list[dict]:
+        return get_species_history(run_id, species_id)
+
+    def get_events(self, run_id: int) -> list[dict]:
+        return get_events(run_id)
+
+    def export_csv(self, run_id: int, output_dir: str) -> dict[str, str]:
+        return export_run_csv(run_id, output_dir)
+
+    def export_json(self, run_id: int, output_path: str) -> str:
+        return export_run_json(run_id, output_path)
+
+    # ── save/load ───────────────────────────────────────────────
+
+    def set_auto_save(self, enabled: bool, interval: int = 500):
+        self._auto_save = enabled
+        self._auto_save_interval = max(50, interval)
+
+    def _do_auto_save(self):
+        if not self.engine:
+            return
+        try:
+            save_id = save_simulation(self.engine, name=f"自动存档 tick {self.engine.tick}", auto=True)
+            self._last_auto_save_tick = self.engine.tick
+            print(f"[Auto-Save] {save_id}")
+        except Exception as e:
+            print(f"[Auto-Save Error] {e}")
+
+    def save(self, name: str = "") -> str | None:
+        """Manual save. Returns save_id."""
+        if not self.engine:
+            return None
+        return save_simulation(self.engine, name=name, auto=False)
+
+    def load(self, save_id: str, ai_provider: AIProvider | None = None) -> bool:
+        """Load a saved simulation."""
+        try:
+            data = load_simulation(save_id)
+            self.stop()
+            time.sleep(0.2)
+            self.engine = SimulationEngine.from_save(data, ai_provider=ai_provider)
+            self._planet_name = data.get("planet", "")
+            self._grid_size = data.get("grid_size", 50)
+            self._last_auto_save_tick = self.engine.tick
+            # Broadcast loaded state
+            self._schedule_broadcast(self._build_broadcast())
+            return True
+        except Exception as e:
+            print(f"[Load Error] {e}")
+            return False
+
+    def list_saves(self) -> list[dict]:
+        return list_saves()
+
+    def delete_save(self, save_id: str) -> bool:
+        return delete_save(save_id)
 
 
 def _json_default(obj):
