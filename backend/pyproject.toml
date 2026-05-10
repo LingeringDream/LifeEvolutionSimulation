@@ -1,0 +1,10 @@
+[project]
+name = "life-evolution-sim"
+version = "2.0.0"
+description = "AI-driven alien planet evolution simulator"
+requires-python = ">=3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+pythonpath = ["."]

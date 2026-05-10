@@ -1,0 +1,15 @@
+{
+  "name": "Photo-Producer",
+  "metabolic_type": "photosynthesis",
+  "body_size": 0.5,
+  "temp_optimum": 25.0,
+  "temp_tolerance": 40.0,
+  "reproduction_rate": 1.0,
+  "reproduction_cost": 0.5,
+  "defense": 0.05,
+  "mobility": 0.0,
+  "sensory_range": 1.0,
+  "diet_preference": "producer",
+  "lifespan": 800,
+  "adaptability": 0.3
+}
