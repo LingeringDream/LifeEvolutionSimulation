@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>外星球演化模拟器</title>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--text2:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922}
+body{font-family:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh}
+.app{display:grid;grid-template-columns:1fr 300px;grid-template-rows:52px 1fr 190px;height:100vh;gap:1px;background:var(--border)}
+header{grid-column:1/-1;background:var(--card);display:flex;align-items:center;padding:0 16px;gap:12px}
+header h1{font-size:16px;font-weight:600;color:var(--accent);white-space:nowrap}
+header .st{font-size:12px;color:var(--text2);white-space:nowrap}
+.ctrls{display:flex;gap:6px;margin-left:auto;flex-wrap:nowrap}
+.ctrls button,.ctrls select{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 12px;border-radius:5px;cursor:pointer;font-size:12px}
+.ctrls button:hover{border-color:var(--accent)}
+.ctrls button.on{background:var(--accent);color:#000;border-color:var(--accent)}
+.ctrls select{padding:4px 6px}
+.world{background:#000;position:relative;overflow:hidden}
+.world canvas{width:100%;height:100%;display:block}
+.side{background:var(--card);padding:12px;overflow-y:auto;font-size:12px}
+.side h3{font-size:12px;color:var(--accent);margin:0 0 6px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.side h3:not(:first-child){margin-top:12px}
+.sp-c{background:var(--bg);border:1px solid var(--border);border-radius:5px;padding:6px 8px;margin-bottom:4px}
+.sp-c .nm{font-weight:600;display:flex;align-items:center;gap:5px;font-size:12px}
+.sp-c .dt{color:var(--text2);margin-top:2px;font-size:11px}
+.env-g{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:12px}
+.env-s{background:var(--bg);border-radius:5px;padding:6px;text-align:center}
+.env-s .v{font-size:15px;font-weight:600;color:var(--accent)}
+.env-s .l{font-size:10px;color:var(--text2);margin-top:1px}
+.el{font-size:11px;color:var(--text2);max-height:90px;overflow-y:auto}
+.el div{padding:2px 0;border-bottom:1px solid var(--border)}
+.charts{grid-column:1/-1;background:var(--card);display:grid;grid-template-columns:1fr 1fr 1fr;gap:1px;padding:6px}
+.ch{background:var(--bg);border-radius:5px;padding:6px}
+.ch h4{font-size:10px;color:var(--text2);margin-bottom:2px}
+.ch canvas{width:100%!important;height:calc(100% - 16px)!important}
+.ov{position:fixed;inset:0;background:rgba(0,0,0,.7);display:flex;align-items:center;justify-content:center;z-index:100}
+.pnl{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:24px;width:400px;max-width:90vw}
+.pnl h2{font-size:18px;margin-bottom:16px;color:var(--accent)}
+.fr{display:flex;align-items:center;gap:10px;margin-bottom:10px}
+.fr label{width:80px;font-size:12px;color:var(--text2);text-align:right}
+.fr select,.fr input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);padding:6px;border-radius:5px;font-size:12px}
+.fr input::placeholder{color:var(--text2)}
+.go{width:100%;padding:10px;background:var(--accent);color:#000;border:none;border-radius:7px;font-size:14px;font-weight:600;cursor:pointer;margin-top:8px}
+.go:hover{opacity:.9}
+.ai-s{border-top:1px solid var(--border);margin-top:12px;padding-top:12px}
+.ai-s h3{font-size:13px;color:var(--orange);margin-bottom:8px}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="text/babel">
+const {useState,useEffect,useRef,useCallback}=React;
+
+function bioColor(v){const t=Math.min(v/3,1);return`rgb(${13+t*40|0},${17+t*160|0},${23+t*30|0})`}
+function tempColor(v){const t=Math.max(0,Math.min(1,(v+200)/400));return`rgb(${t*255|0},60,${(1-t)*255|0})`}
+function resColor(v){const t=Math.min(v/2,1);return`rgb(20,${40+t*180|0},30)`}
+
+/* ── WorldCanvas ─────────────────────────────────────────────── */
+function WorldCanvas({state,layer}){
+  const cv=useRef(null),ct=useRef(null);
+  useEffect(()=>{
+    const c=cv.current,p=ct.current;
+    if(!c||!p||!state||!state.grid_size)return;
+    const gs=state.grid_size;
+    c.width=p.offsetWidth; c.height=p.offsetHeight;
+    const ctx=c.getContext('2d');
+    const cw=c.width/gs,ch=c.height/gs;
+    let grid,cm;
+    if(layer==='temperature'){grid=state.temperature;cm=tempColor}
+    else if(layer==='resources'){grid=state.resources;cm=resColor}
+    else{grid=state.total_biomass;cm=bioColor}
+    if(!grid)return;
+    for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
+      ctx.fillStyle=cm(grid[y][x]);
+      ctx.fillRect(x*cw,y*ch,cw+.5,ch+.5);
+    }
+    if(layer==='biomass'&&state.species_layers){
+      for(const[,l]of Object.entries(state.species_layers)){
+        ctx.fillStyle=`rgb(${l.color.join(',')})`;
+        for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
+          const v=l.biomass[y][x];
+          if(v>0.05){
+            const r=Math.min(cw,ch)*0.3*Math.min(v,3);
+            ctx.beginPath();ctx.arc(x*cw+cw/2,y*ch+ch/2,Math.max(1,r),0,Math.PI*2);ctx.fill();
+          }
+        }
+      }
+    }
+  },[state,layer]);
+  useEffect(()=>{
+    const obs=new ResizeObserver(()=>{const c=cv.current,p=ct.current;if(c&&p){c.width=p.offsetWidth;c.height=p.offsetHeight}});
+    if(ct.current)obs.observe(ct.current);
+    return()=>obs.disconnect();
+  },[]);
+  return <div className="world" ref={ct}><canvas ref={cv}/></div>;
+}
+
+/* ── Charts ──────────────────────────────────────────────────── */
+function Charts({h}){
+  const pR=useRef(null),dR=useRef(null),eR=useRef(null);
+  const pC=useRef(null),dC=useRef(null),eC=useRef(null);
+  useEffect(()=>{
+    if(!pR.current)return;
+    pC.current=new Chart(pR.current,{type:'line',data:{labels:[],datasets:[]},options:{animation:false,scales:{x:{display:false},y:{beginAtZero:true}},plugins:{legend:{display:true,labels:{boxWidth:8,font:{size:9}}}},elements:{point:{radius:0},line:{borderWidth:1.5}}}});
+    dC.current=new Chart(dR.current,{type:'line',data:{labels:[],datasets:[{label:'Shannon H',data:[],borderColor:'#58a6ff',fill:false}]},options:{animation:false,scales:{x:{display:false},y:{beginAtZero:true}},plugins:{legend:{display:false}},elements:{point:{radius:0}}}});
+    eC.current=new Chart(eR.current,{type:'line',data:{labels:[],datasets:[{label:'温度',data:[],borderColor:'#f85149',fill:false,yAxisID:'y'},{label:'CO₂',data:[],borderColor:'#d29922',fill:false,yAxisID:'y1'}]},options:{animation:false,scales:{x:{display:false},y:{position:'left'},y1:{position:'right',grid:{drawOnChartArea:false}}},plugins:{legend:{display:true,labels:{boxWidth:8,font:{size:9}}}},elements:{point:{radius:0}}}});
+    return()=>{pC.current?.destroy();dC.current?.destroy();eC.current?.destroy()};
+  },[]);
+  useEffect(()=>{
+    if(!pC.current)return;
+    pC.current.data.labels=h.ticks;
+    pC.current.data.datasets=Object.values(h.pops).map(s=>({label:s.name,data:s.data.slice(-500),borderColor:`rgb(${s.color.join(',')})`,fill:false}));
+    pC.current.update('none');
+    dC.current.data.labels=h.ticks;dC.current.data.datasets[0].data=h.divs;dC.current.update('none');
+    eC.current.data.labels=h.ticks;eC.current.data.datasets[0].data=h.temps;eC.current.data.datasets[1].data=h.co2s;eC.current.update('none');
+  },[h]);
+  return <div className="charts">
+    <div className="ch"><h4>种群数量</h4><canvas ref={pR}/></div>
+    <div className="ch"><h4>多样性指数</h4><canvas ref={dR}/></div>
+    <div className="ch"><h4>环境指标</h4><canvas ref={eR}/></div>
+  </div>;
+}
+
+/* ── SetupPanel ──────────────────────────────────────────────── */
+function Setup({onStart,visible,onClose}){
+  const[p,setP]=useState('titan'),[pr,setPr]=useState(2),[co,setCo]=useState(1),[gr,setGr]=useState(50);
+  const[ai,setAi]=useState(''),[am,setAm]=useState(''),[ab,setAb]=useState(''),[ak,setAk]=useState(''),[aii,setAii]=useState(60);
+  if(!visible)return null;
+  return <div className="ov">
+    <div className="pnl">
+      <h2>新建模拟</h2>
+      <div className="fr"><label>星球</label><select value={p} onChange={e=>setP(e.target.value)}>
+        <option value="titan">土卫六 Titan (-179°C)</option><option value="mars">火星 Mars (-60°C)</option>
+        <option value="europa">木卫二 Europa (-160°C)</option><option value="kepler442b">开普勒-442b (-2°C)</option></select></div>
+      <div className="fr"><label>生产者</label><input type="number" value={pr} min={1} max={5} onChange={e=>setPr(+e.target.value)}/></div>
+      <div className="fr"><label>消费者</label><input type="number" value={co} min={0} max={5} onChange={e=>setCo(+e.target.value)}/></div>
+      <div className="fr"><label>网格大小</label><select value={gr} onChange={e=>setGr(+e.target.value)}>
+        <option value={30}>30×30</option><option value={50}>50×50</option><option value={80}>80×80</option></select></div>
+      <div className="ai-s">
+        <h3>AI 演化引擎（可选）</h3>
+        <div className="fr"><label>服务商</label><select value={ai} onChange={e=>setAi(e.target.value)}>
+          <option value="">不使用</option><option value="openai">OpenAI</option><option value="claude">Claude</option><option value="custom">自定义</option></select></div>
+        <div className="fr"><label>模型</label><input placeholder="gpt-4o-mini" value={am} onChange={e=>setAm(e.target.value)}/></div>
+        <div className="fr"><label>地址</label><input placeholder="https://api.deepseek.com/v1" value={ab} onChange={e=>setAb(e.target.value)}/></div>
+        <div className="fr"><label>密钥</label><input type="password" placeholder="sk-..." value={ak} onChange={e=>setAk(e.target.value)}/></div>
+        <div className="fr"><label>间隔</label><input type="number" value={aii} min={10} max={500} onChange={e=>setAii(+e.target.value)}/></div>
+      </div>
+      <button className="go" onClick={()=>onStart({planet:p,producers:pr,consumers:co,grid_size:gr,ai:ai||null,ai_model:am||null,ai_base_url:ab||null,ai_key:ak||null,ai_interval:aii})}>开始模拟</button>
+    </div>
+  </div>;
+}
+
+/* ── App ─────────────────────────────────────────────────────── */
+function App(){
+  const[setup,setSetup]=useState(true);
+  const[running,setRunning]=useState(false);
+  const[tick,setTick]=useState(0);
+  const[speed,setSpeed]=useState(10);
+  const[layer,setLayer]=useState('biomass');
+  const[species,setSpecies]=useState([]);
+  const[env,setEnv]=useState({});
+  const[events,setEvents]=useState([]);
+  const[stateData,setStateData]=useState(null);
+  const h=useRef({ticks:[],pops:{},divs:[],temps:[],co2s:[]});
+  const[,bump]=useState(0);
+  const wsRef=useRef(null);
+
+  useEffect(()=>{
+    const connect=()=>{
+      const proto=location.protocol==='https:'?'wss:':'ws:';
+      const ws=new WebSocket(`${proto}//${location.host}/ws/simulation`);
+      wsRef.current=ws;
+      ws.onopen=()=>console.log('WS connected');
+      ws.onmessage=e=>{
+        const d=JSON.parse(e.data);
+        if(d.type==='state')onState(d);
+      };
+      ws.onclose=()=>{console.log('WS disconnected, reconnecting...');setTimeout(connect,2000)};
+    };
+    connect();
+  },[]);
+
+  const send=useCallback((a,extra={})=>{
+    const ws=wsRef.current;
+    if(ws&&ws.readyState===1)ws.send(JSON.stringify({action:a,...extra}));
+  },[]);
+
+  const onState=useCallback(s=>{
+    setRunning(s.running);setTick(s.tick);setSpeed(s.speed);setSpecies(s.species||[]);
+    setEnv(s.environment||{});setEvents(s.events||[]);
+    // Grid data is embedded in state now
+    if(s.grid_size) setStateData(s);
+    const hr=h.current;
+    hr.ticks.push(s.tick);if(hr.ticks.length>500)hr.ticks.shift();
+    (s.species||[]).forEach(sp=>{
+      if(!hr.pops[sp.id])hr.pops[sp.id]={name:sp.name,color:sp.color,data:[]};
+      hr.pops[sp.id].data.push(sp.biomass);if(hr.pops[sp.id].data.length>500)hr.pops[sp.id].data.shift();
+    });
+    const bm=(s.species||[]).map(sp=>sp.biomass).filter(b=>b>0);
+    const tot=bm.reduce((a,b)=>a+b,0);
+    let div=0;if(bm.length>1&&tot>0)div=-bm.reduce((s,b)=>{const p=b/tot;return s+p*Math.log(p)},0);
+    hr.divs.push(div);if(hr.divs.length>500)hr.divs.shift();
+    hr.temps.push(s.environment?.temperature_mean??0);if(hr.temps.length>500)hr.temps.shift();
+    hr.co2s.push(s.environment?.atmosphere?.CO2??0);if(hr.co2s.length>500)hr.co2s.shift();
+    bump(n=>n+1);
+  },[]);
+
+  const startSim=useCallback(async body=>{
+    await fetch('/api/simulation/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    h.current={ticks:[],pops:{},divs:[],temps:[],co2s:[]};
+    setStateData(null);setSetup(false);
+  },[]);
+
+  const toggle=()=>{
+    if(running){send('pause');setRunning(false)}
+    else{send('resume');setRunning(true)}
+  };
+
+  return <div className="app">
+    <header>
+      <h1>外星球演化模拟器</h1>
+      <span className="st">周期 {tick} | {species.length} 物种 | {speed} 步/秒</span>
+      <div className="ctrls">
+        <button className={running?'on':''} onClick={toggle}>{running?'暂停':'运行'}</button>
+        <button onClick={()=>send('step')}>单步</button>
+        <select value={speed} onChange={e=>{setSpeed(+e.target.value);send('speed',{tps:+e.target.value})}}>
+          <option value={1}>1×</option><option value={5}>5×</option><option value={10}>10×</option>
+          <option value={20}>20×</option><option value={50}>50×</option><option value={100}>100×</option>
+        </select>
+        <select value={layer} onChange={e=>setLayer(e.target.value)}>
+          <option value="biomass">生物量</option><option value="temperature">温度</option><option value="resources">资源</option>
+        </select>
+        <button onClick={()=>setSetup(true)}>新建</button>
+      </div>
+    </header>
+
+    <WorldCanvas state={stateData} layer={layer}/>
+
+    <div className="side">
+      <h3>物种</h3>
+      {species.map(sp=><div className="sp-c" key={sp.id}>
+        <div className="nm"><span className="dot" style={{background:`rgb(${sp.color.join(',')})`,width:10,height:10,borderRadius:'50%',display:'inline-block'}}/>{sp.name}</div>
+        <div className="dt">生物量: {sp.biomass.toFixed(2)} | {sp.metabolic_type==='photosynthesis'?'光合':sp.metabolic_type==='chemosynthesis'?'化能':'异养'}</div>
+      </div>)}
+      <h3>环境</h3>
+      <div className="env-g">
+        <div className="env-s"><div className="v">{(env.temperature_mean??0).toFixed(1)}°C</div><div className="l">温度</div></div>
+        <div className="env-s"><div className="v">{(env.resources_mean??0).toFixed(3)}</div><div className="l">资源</div></div>
+        <div className="env-s"><div className="v">{(env.atmosphere?.O2??0).toFixed(4)}</div><div className="l">氧气 O₂</div></div>
+        <div className="env-s"><div className="v">{(env.atmosphere?.CO2??0).toFixed(4)}</div><div className="l">二氧化碳 CO₂</div></div>
+      </div>
+      <h3>事件日志</h3>
+      <div className="el">{events.slice(-8).reverse().map((e,i)=><div key={i}><b>[{e.tick}]</b> {e.type==='extinction'?'灭绝':e.type==='mutation'?'突变':e.type==='speciation'?'物种形成':e.type==='ai_narrative'?'AI叙事':e.type}: {e.desc}</div>)}</div>
+    </div>
+
+    <Charts h={h.current}/>
+    <Setup visible={setup} onStart={startSim}/>
+  </div>;
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
