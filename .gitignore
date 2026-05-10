@@ -28,3 +28,6 @@ Thumbs.db
 
 # Database
 *.db
+
+# Saves
+backend/saves/
