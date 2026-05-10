@@ -15,8 +15,22 @@ sim = SimManager()
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 
+class CustomPlanet(BaseModel):
+    name: str = "Custom"
+    gravity: float = 9.8
+    surface_temp: float = 15.0
+    albedo: float = 0.3
+    axial_tilt: float = 23.5
+    orbital_distance: float = 1.0
+    atmospheric_pressure: float = 1.0
+    co2_ratio: float = 0.0004
+    ch4_ratio: float = 0.0
+    magnetic_field: float = 1.0
+    season_period: int = 365
+
 class StartRequest(BaseModel):
     planet: str = "titan"
+    custom_planet: CustomPlanet | None = None
     producers: int = 2
     consumers: int = 1
     grid_size: int = 50
@@ -45,6 +59,7 @@ async def start_sim(req: StartRequest):
             model=req.ai_model,
             base_url=req.ai_base_url,
         )
+    custom_cfg = req.custom_planet.model_dump() if req.custom_planet else None
     sim.start(
         planet=req.planet,
         producers=req.producers,
@@ -52,6 +67,7 @@ async def start_sim(req: StartRequest):
         grid_size=req.grid_size,
         ai_provider=ai_provider,
         ai_interval=req.ai_interval,
+        custom_planet=custom_cfg,
     )
     return {"status": "started", "planet": req.planet}
 

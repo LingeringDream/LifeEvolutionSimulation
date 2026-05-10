@@ -50,12 +50,17 @@ class SimManager:
         grid_size: int = 50,
         ai_provider: AIProvider | None = None,
         ai_interval: int = 60,
+        custom_planet: dict | None = None,
     ):
         if self._running:
             self.stop()
             time.sleep(0.2)
 
-        config = load_planet_config(planet)
+        from simulation.environment import PlanetConfig as PC
+        if planet == "custom" and custom_planet:
+            config = PC(**custom_planet)
+        else:
+            config = load_planet_config(planet)
         self._planet_name = planet
         self._grid_size = grid_size
 
