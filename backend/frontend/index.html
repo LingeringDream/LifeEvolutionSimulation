@@ -136,7 +136,7 @@ const PLANET_PRESETS={
   kepler442b:{name:'Kepler-442b',gravity:12.16,surface_temp:-2,albedo:0.3,axial_tilt:15,orbital_distance:0.409,atmospheric_pressure:1.5,co2_ratio:0.01,ch4_ratio:0.001,magnetic_field:1.2,season_period:112},
 };
 
-function Setup({onStart,visible}){
+function Setup({onStart,onClose,visible}){
   const[p,setP]=useState('titan'),[pr,setPr]=useState(2),[co,setCo]=useState(1),[gr,setGr]=useState(50);
   const[ai,setAi]=useState(''),[am,setAm]=useState(''),[ab,setAb]=useState(''),[ak,setAk]=useState(''),[aii,setAii]=useState(60);
   const[custom,setCustom]=useState({...PLANET_PRESETS.titan,planet_name:'Custom Planet'});
@@ -193,6 +193,7 @@ function Setup({onStart,visible}){
         <div className="fr"><label>间隔</label><input type="number" value={aii} min={10} max={500} onChange={e=>setAii(+e.target.value)}/></div>
       </div>
       <button className="go" onClick={go}>开始模拟</button>
+      <button style={{width:'100%',padding:'8px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:7,cursor:'pointer',fontSize:13,marginTop:6}} onClick={()=>onClose()}>取消</button>
     </div>
   </div>;
 }
@@ -241,8 +242,6 @@ function App(){
     connect();
     loadRuns();
     loadSaves();
-    // Auto-start with default settings
-    fetch('/api/simulation/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({planet:'titan',producers:2,consumers:1,grid_size:50})});
   },[]);
 
   const send=useCallback((a,extra={})=>{
@@ -343,7 +342,7 @@ function App(){
     </div>
 
     <Charts h={h.current}/>
-    <Setup visible={setup} onStart={startSim}/>
+    <Setup visible={setup} onStart={startSim} onClose={()=>setSetup(false)}/>
 
     {/* Load dialog */}
     {showLoad&&<div className="ov" onClick={()=>setShowLoad(false)}>
