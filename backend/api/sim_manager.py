@@ -190,6 +190,10 @@ class SimManager:
     def set_event_loop(self, loop: asyncio.AbstractEventLoop):
         self._loop = loop
 
+    def get_state(self) -> dict:
+        """Return current state as a dict (for REST polling / initial WS message)."""
+        return self._build_broadcast()
+
 
 def _json_default(obj):
     if isinstance(obj, np.ndarray):
