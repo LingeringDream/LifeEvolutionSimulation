@@ -199,7 +199,7 @@ function Setup({onStart,visible}){
 
 /* ── App ─────────────────────────────────────────────────────── */
 function App(){
-  const[setup,setSetup]=useState(true);
+  const[setup,setSetup]=useState(false);
   const[running,setRunning]=useState(false);
   const[tick,setTick]=useState(0);
   const[speed,setSpeed]=useState(10);
@@ -241,6 +241,8 @@ function App(){
     connect();
     loadRuns();
     loadSaves();
+    // Auto-start with default settings
+    fetch('/api/simulation/start',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({planet:'titan',producers:2,consumers:1,grid_size:50})});
   },[]);
 
   const send=useCallback((a,extra={})=>{

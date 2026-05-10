@@ -48,6 +48,12 @@ async def index():
     html_path = FRONTEND_DIR / "index.html"
     return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
 
+@app.get("/favicon.ico")
+async def favicon():
+    from fastapi.responses import Response
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">🧬</text></svg>'
+    return Response(content=svg, media_type="image/svg+xml")
+
 
 @app.post("/api/simulation/start")
 async def start_sim(req: StartRequest):
