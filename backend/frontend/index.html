@@ -129,37 +129,80 @@ function Charts({h}){
 }
 
 /* ── SetupPanel ──────────────────────────────────────────────── */
-function Setup({onStart,visible,onClose}){
+const PLANET_PRESETS={
+  titan:{name:'Titan',gravity:1.35,surface_temp:-179,albedo:0.22,axial_tilt:26.7,orbital_distance:9.5,atmospheric_pressure:1.45,co2_ratio:0,ch4_ratio:0.05,magnetic_field:0,season_period:10759},
+  mars:{name:'Mars',gravity:3.72,surface_temp:-60,albedo:0.25,axial_tilt:25.2,orbital_distance:1.52,atmospheric_pressure:0.006,co2_ratio:0.95,ch4_ratio:0,magnetic_field:0,season_period:687},
+  europa:{name:'Europa',gravity:1.315,surface_temp:-160,albedo:0.67,axial_tilt:0.1,orbital_distance:5.2,atmospheric_pressure:0.0000001,co2_ratio:0,ch4_ratio:0,magnetic_field:0,season_period:1296},
+  kepler442b:{name:'Kepler-442b',gravity:12.16,surface_temp:-2,albedo:0.3,axial_tilt:15,orbital_distance:0.409,atmospheric_pressure:1.5,co2_ratio:0.01,ch4_ratio:0.001,magnetic_field:1.2,season_period:112},
+};
+
+function Setup({onStart,onClose,visible}){
   const[p,setP]=useState('titan'),[pr,setPr]=useState(2),[co,setCo]=useState(1),[gr,setGr]=useState(50);
-  const[ai,setAi]=useState(''),[am,setAm]=useState(''),[ab,setAb]=useState(''),[ak,setAk]=useState(''),[aii,setAii]=useState(60);
+  const[custom,setCustom]=useState({...PLANET_PRESETS.titan,planet_name:'Custom Planet'});
+  const[envCfg,setEnvCfg]=useState(null);
+  const[aiSel,setAiSel]=useState('');
+  useEffect(()=>{fetch('/api/config').then(r=>r.json()).then(c=>{
+    setEnvCfg(c);
+    if(c.provider)setAiSel(c.provider);
+  }).catch(()=>{})},[]);
+
   if(!visible)return null;
+
+  const isCustom=p==='custom';
+  const go=()=>{
+    const c=envCfg||{};
+    const body={producers:pr,consumers:co,grid_size:gr,ai:aiSel||null,ai_model:null,ai_key:null,ai_base_url:null,ai_interval:c.ai_interval||60};
+    if(isCustom){body.planet='custom';body.custom_planet={...custom,name:custom.planet_name}}
+    else{body.planet=p}
+    onStart(body);
+  };
+
+  const C=custom;const setC=(k,v)=>setCustom({...C,[k]:v});
+
   return <div className="ov">
     <div className="pnl">
       <h2>新建模拟</h2>
       <div className="fr"><label>星球</label><select value={p} onChange={e=>setP(e.target.value)}>
         <option value="titan">土卫六 Titan (-179°C)</option><option value="mars">火星 Mars (-60°C)</option>
-        <option value="europa">木卫二 Europa (-160°C)</option><option value="kepler442b">开普勒-442b (-2°C)</option></select></div>
+        <option value="europa">木卫二 Europa (-160°C)</option><option value="kepler442b">开普勒-442b (-2°C)</option>
+        <option value="custom">自定义星球...</option></select></div>
+      {isCustom&&<div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:8,padding:12,marginBottom:12}}>
+        <div style={{fontSize:13,color:'var(--orange)',fontWeight:600,marginBottom:8}}>星球参数</div>
+        <div className="fr"><label>名称</label><input value={C.planet_name} onChange={e=>setC('planet_name',e.target.value)}/></div>
+        <div className="fr"><label>表面温度°C</label><input type="number" value={C.surface_temp} onChange={e=>setC('surface_temp',+e.target.value)}/></div>
+        <div className="fr"><label>重力 m/s²</label><input type="number" step="0.1" value={C.gravity} onChange={e=>setC('gravity',+e.target.value)}/></div>
+        <div className="fr"><label>反照率</label><input type="number" step="0.01" min="0" max="1" value={C.albedo} onChange={e=>setC('albedo',+e.target.value)}/></div>
+        <div className="fr"><label>转轴倾角°</label><input type="number" step="0.1" value={C.axial_tilt} onChange={e=>setC('axial_tilt',+e.target.value)}/></div>
+        <div className="fr"><label>轨道距离 AU</label><input type="number" step="0.01" value={C.orbital_distance} onChange={e=>setC('orbital_distance',+e.target.value)}/></div>
+        <div className="fr"><label>大气压 atm</label><input type="number" step="0.01" value={C.atmospheric_pressure} onChange={e=>setC('atmospheric_pressure',+e.target.value)}/></div>
+        <div className="fr"><label>CO₂ 比例</label><input type="number" step="0.001" min="0" max="1" value={C.co2_ratio} onChange={e=>setC('co2_ratio',+e.target.value)}/></div>
+        <div className="fr"><label>CH₄ 比例</label><input type="number" step="0.001" min="0" max="1" value={C.ch4_ratio} onChange={e=>setC('ch4_ratio',+e.target.value)}/></div>
+        <div className="fr"><label>磁场强度</label><input type="number" step="0.1" min="0" value={C.magnetic_field} onChange={e=>setC('magnetic_field',+e.target.value)}/></div>
+        <div className="fr"><label>季节周期</label><input type="number" min="1" value={C.season_period} onChange={e=>setC('season_period',+e.target.value)}/></div>
+        <div style={{display:'flex',gap:6,marginTop:8}}>
+          {Object.entries(PLANET_PRESETS).map(([k,v])=><button key={k} style={{flex:1,padding:'4px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:10}}
+            onClick={()=>setCustom({...v,planet_name:v.name})}>{v.name}</button>)}
+        </div>
+      </div>}
       <div className="fr"><label>生产者</label><input type="number" value={pr} min={1} max={5} onChange={e=>setPr(+e.target.value)}/></div>
       <div className="fr"><label>消费者</label><input type="number" value={co} min={0} max={5} onChange={e=>setCo(+e.target.value)}/></div>
       <div className="fr"><label>网格大小</label><select value={gr} onChange={e=>setGr(+e.target.value)}>
         <option value={30}>30×30</option><option value={50}>50×50</option><option value={80}>80×80</option></select></div>
-      <div className="ai-s">
-        <h3>AI 演化引擎（可选）</h3>
-        <div className="fr"><label>服务商</label><select value={ai} onChange={e=>setAi(e.target.value)}>
-          <option value="">不使用</option><option value="openai">OpenAI</option><option value="claude">Claude</option><option value="custom">自定义</option></select></div>
-        <div className="fr"><label>模型</label><input placeholder="gpt-4o-mini" value={am} onChange={e=>setAm(e.target.value)}/></div>
-        <div className="fr"><label>地址</label><input placeholder="https://api.deepseek.com/v1" value={ab} onChange={e=>setAb(e.target.value)}/></div>
-        <div className="fr"><label>密钥</label><input type="password" placeholder="sk-..." value={ak} onChange={e=>setAk(e.target.value)}/></div>
-        <div className="fr"><label>间隔</label><input type="number" value={aii} min={10} max={500} onChange={e=>setAii(+e.target.value)}/></div>
-      </div>
-      <button className="go" onClick={()=>onStart({planet:p,producers:pr,consumers:co,grid_size:gr,ai:ai||null,ai_model:am||null,ai_base_url:ab||null,ai_key:ak||null,ai_interval:aii})}>开始模拟</button>
+      <div className="fr"><label>AI 引擎</label><select value={aiSel} onChange={e=>setAiSel(e.target.value)}>
+        <option value="">不使用</option>
+        {envCfg&&envCfg.openai_key_set&&<option value="openai">OpenAI ({envCfg.openai_model})</option>}
+        {envCfg&&envCfg.claude_key_set&&<option value="claude">Claude ({envCfg.claude_model})</option>}
+        {envCfg&&envCfg.custom_key_set&&<option value="custom">{envCfg.custom_model||'Custom'} ({envCfg.custom_base_url})</option>}
+      </select></div>
+      <button className="go" onClick={go}>开始模拟</button>
+      <button style={{width:'100%',padding:'8px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:7,cursor:'pointer',fontSize:13,marginTop:6}} onClick={()=>onClose()}>取消</button>
     </div>
   </div>;
 }
 
 /* ── App ─────────────────────────────────────────────────────── */
 function App(){
-  const[setup,setSetup]=useState(true);
+  const[setup,setSetup]=useState(false);
   const[running,setRunning]=useState(false);
   const[tick,setTick]=useState(0);
   const[speed,setSpeed]=useState(10);
@@ -301,7 +344,7 @@ function App(){
     </div>
 
     <Charts h={h.current}/>
-    <Setup visible={setup} onStart={startSim}/>
+    <Setup visible={setup} onStart={startSim} onClose={()=>setSetup(false)}/>
 
     {/* Load dialog */}
     {showLoad&&<div className="ov" onClick={()=>setShowLoad(false)}>

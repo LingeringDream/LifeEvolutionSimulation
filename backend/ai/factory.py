@@ -46,14 +46,14 @@ def create_ai_provider(
         from ai.openai_provider import OpenAIProvider
         return OpenAIProvider(
             api_key=api_key or os.environ.get("OPENAI_API_KEY"),
-            model=model or "gpt-4o-mini",
+            model=model or os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
             base_url=base_url,
         )
     elif provider == "claude":
         from ai.claude_provider import ClaudeProvider
         return ClaudeProvider(
             api_key=api_key or os.environ.get("ANTHROPIC_API_KEY"),
-            model=model or "claude-sonnet-4-20250514",
+            model=model or os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
         )
     elif provider == "custom":
         resolved_url = base_url or os.environ.get("CUSTOM_API_BASE_URL")
@@ -64,7 +64,7 @@ def create_ai_provider(
         from ai.openai_provider import OpenAIProvider
         return OpenAIProvider(
             api_key=api_key or os.environ.get("CUSTOM_API_KEY", "no-key"),
-            model=model or "default",
+            model=model or os.environ.get("CUSTOM_MODEL", "default"),
             base_url=resolved_url,
         )
     else:

@@ -15,8 +15,22 @@ sim = SimManager()
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 
 
+class CustomPlanet(BaseModel):
+    name: str = "Custom"
+    gravity: float = 9.8
+    surface_temp: float = 15.0
+    albedo: float = 0.3
+    axial_tilt: float = 23.5
+    orbital_distance: float = 1.0
+    atmospheric_pressure: float = 1.0
+    co2_ratio: float = 0.0004
+    ch4_ratio: float = 0.0
+    magnetic_field: float = 1.0
+    season_period: int = 365
+
 class StartRequest(BaseModel):
     planet: str = "titan"
+    custom_planet: CustomPlanet | None = None
     producers: int = 2
     consumers: int = 1
     grid_size: int = 50
@@ -32,7 +46,16 @@ class StartRequest(BaseModel):
 @app.get("/", response_class=HTMLResponse)
 async def index():
     html_path = FRONTEND_DIR / "index.html"
-    return HTMLResponse(content=html_path.read_text(encoding="utf-8"))
+    return HTMLResponse(
+        content=html_path.read_text(encoding="utf-8"),
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"},
+    )
+
+@app.get("/favicon.ico")
+async def favicon():
+    from fastapi.responses import Response
+    svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><text y="80" font-size="80">🧬</text></svg>'
+    return Response(content=svg, media_type="image/svg+xml")
 
 
 @app.post("/api/simulation/start")
@@ -45,6 +68,7 @@ async def start_sim(req: StartRequest):
             model=req.ai_model,
             base_url=req.ai_base_url,
         )
+    custom_cfg = req.custom_planet.model_dump() if req.custom_planet else None
     sim.start(
         planet=req.planet,
         producers=req.producers,
@@ -52,6 +76,7 @@ async def start_sim(req: StartRequest):
         grid_size=req.grid_size,
         ai_provider=ai_provider,
         ai_interval=req.ai_interval,
+        custom_planet=custom_cfg,
     )
     return {"status": "started", "planet": req.planet}
 
@@ -89,6 +114,30 @@ async def get_state():
 async def list_planets():
     from simulation.templates import list_planets as _list
     return _list()
+
+
+@app.get("/api/config")
+async def get_config():
+    """Return AI config from .env (key masked)."""
+    import os
+    def mask(key):
+        if not key: return ""
+        return key[:6] + "..." + key[-4:] if len(key) > 12 else "***"
+
+    return {
+        "provider": os.environ.get("AI_PROVIDER", ""),
+        "openai_model": os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+        "openai_key_set": bool(os.environ.get("OPENAI_API_KEY")),
+        "openai_key_preview": mask(os.environ.get("OPENAI_API_KEY", "")),
+        "claude_model": os.environ.get("CLAUDE_MODEL", "claude-sonnet-4-20250514"),
+        "claude_key_set": bool(os.environ.get("ANTHROPIC_API_KEY")),
+        "claude_key_preview": mask(os.environ.get("ANTHROPIC_API_KEY", "")),
+        "custom_base_url": os.environ.get("CUSTOM_API_BASE_URL", ""),
+        "custom_model": os.environ.get("CUSTOM_MODEL", ""),
+        "custom_key_set": bool(os.environ.get("CUSTOM_API_KEY")),
+        "custom_key_preview": mask(os.environ.get("CUSTOM_API_KEY", "")),
+        "ai_interval": int(os.environ.get("AI_INTERVAL", "60")),
+    }
 
 
 # ── Data export endpoints ──────────────────────────────────────
