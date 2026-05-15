@@ -305,6 +305,8 @@ class SimManager:
             "total_biomass": total_biomass.tolist(),
             "temperature": eng.env.temperature.tolist(),
             "resources": eng.env.resources.tolist(),
+            "toxins": eng.toxins.tolist(),
+            "nutrients": eng.nutrients.tolist(),
             "species_layers": species_layers,
             "run_id": self._run_id,
         }

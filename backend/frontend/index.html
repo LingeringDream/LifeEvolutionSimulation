@@ -82,8 +82,17 @@ function tempColorRGB(v){
 }
 function resColorRGB(v){
   const t=clamp(v/2,0,1);
-  // black → dark teal → emerald → bright green
   return[lerp(5,60,t),lerp(10,200,t*t),lerp(15,70,t)];
+}
+function toxinColorRGB(v){
+  const t=clamp(v/0.5,0,1);
+  // black → dark purple → magenta → bright red
+  return[lerp(10,200,t),lerp(5,40,t*t),lerp(20,80,t)];
+}
+function nutrientColorRGB(v){
+  const t=clamp(v/1.5,0,1);
+  // dark → brown → gold → bright yellow
+  return[lerp(15,240,t),lerp(10,200,t),lerp(5,40,t*t)];
 }
 
 /* ── WorldCanvas ─────────────────────────────────────────────── */
@@ -105,6 +114,8 @@ function WorldCanvas({state,layer}){
     let grid,cmRGB;
     if(layer==='temperature'){grid=state.temperature;cmRGB=tempColorRGB}
     else if(layer==='resources'){grid=state.resources;cmRGB=resColorRGB}
+    else if(layer==='toxins'){grid=state.toxins;cmRGB=toxinColorRGB}
+    else if(layer==='nutrients'){grid=state.nutrients;cmRGB=nutrientColorRGB}
     else{grid=state.total_biomass;cmRGB=bioColorRGB}
     if(!grid||!grid.length||!grid[0])return;
 
@@ -160,7 +171,7 @@ function WorldCanvas({state,layer}){
     const pad=(rMax-rMin)*0.05;rMin-=pad;rMax+=pad;
 
     // Legend
-    const labels={biomass:'生物量',temperature:'温度 °C',resources:'资源丰度'};
+    const labels={biomass:'生物量',temperature:'温度 °C',resources:'资源丰度',toxins:'毒素浓度',nutrients:'营养循环'};
     const lx=10,ly=H-36,lw=160,lh=14;
     ctx.fillStyle='rgba(0,0,0,0.55)';
     ctx.fillRect(lx-4,ly-6,lw+8,lh+22);
@@ -462,6 +473,7 @@ function App(){
         </select>
         <select value={layer} onChange={e=>setLayer(e.target.value)}>
           <option value="biomass">生物量</option><option value="temperature">温度</option><option value="resources">资源</option>
+          <option value="toxins">毒素</option><option value="nutrients">营养</option>
         </select>
         <button onClick={()=>setSetup(true)}>新建</button>
         <button onClick={async()=>{try{const r=await fetch('/api/saves',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:`存档 tick ${tick}`})});const d=await r.json();setSaveMsg('已保存: '+d.save_id);setTimeout(()=>setSaveMsg(''),3000);loadSaves()}catch(e){setSaveMsg('保存失败')}}}>存档</button>
