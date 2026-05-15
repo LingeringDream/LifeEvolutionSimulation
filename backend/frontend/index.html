@@ -21,7 +21,7 @@ header .st{font-size:12px;color:var(--text2);white-space:nowrap}
 .ctrls button:hover{border-color:var(--accent)}
 .ctrls button.on{background:var(--accent);color:#000;border-color:var(--accent)}
 .ctrls select{padding:4px 6px}
-.world{background:#000;position:relative;overflow:hidden}
+.world{background:#0a0e14;position:relative;overflow:hidden}
 .world canvas{width:100%;height:100%;display:block}
 .side{background:var(--card);padding:12px;overflow-y:auto;font-size:12px}
 .side h3{font-size:12px;color:var(--accent);margin:0 0 6px;border-bottom:1px solid var(--border);padding-bottom:4px}
@@ -57,48 +57,135 @@ header .st{font-size:12px;color:var(--text2);white-space:nowrap}
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
 
-function bioColor(v){const t=Math.min(v/3,1);return`rgb(${13+t*40|0},${17+t*160|0},${23+t*30|0})`}
-function tempColor(v){const t=Math.max(0,Math.min(1,(v+200)/400));return`rgb(${t*255|0},60,${(1-t)*255|0})`}
-function resColor(v){const t=Math.min(v/2,1);return`rgb(20,${40+t*180|0},30)`}
+/* ── Color maps ──────────────────────────────────────────────── */
+function lerp(a,b,t){return a+(b-a)*t}
+function clamp(v,mn,mx){return Math.max(mn,Math.min(mx,v))}
+
+function bioColorRGB(v){
+  const t=clamp(v/3,0,1);
+  // black → dark green → green → bright yellow-green
+  const r=lerp(8,200,t*t);
+  const g=lerp(15,230,Math.sqrt(t));
+  const b=lerp(25,60,t);
+  return[r,g,b];
+}
+function tempColorRGB(v){
+  const t=clamp((v+200)/500,0,1);
+  // deep blue → blue → cyan → green → yellow → orange → red
+  let r,g,b;
+  if(t<0.2){const u=t/0.2;r=lerp(10,30,u);g=lerp(20,80,u);b=lerp(180,220,u)}
+  else if(t<0.4){const u=(t-0.2)/0.2;r=lerp(30,20,u);g=lerp(80,180,u);b=lerp(220,200,u)}
+  else if(t<0.6){const u=(t-0.4)/0.2;r=lerp(20,120,u);g=lerp(180,220,u);b=lerp(200,60,u)}
+  else if(t<0.8){const u=(t-0.6)/0.2;r=lerp(120,240,u);g=lerp(220,180,u);b=lerp(60,20,u)}
+  else{const u=(t-0.8)/0.2;r=lerp(240,200,u);g=lerp(180,50,u);b=lerp(20,15,u)}
+  return[r,g,b];
+}
+function resColorRGB(v){
+  const t=clamp(v/2,0,1);
+  // black → dark teal → emerald → bright green
+  return[lerp(5,60,t),lerp(10,200,t*t),lerp(15,70,t)];
+}
 
 /* ── WorldCanvas ─────────────────────────────────────────────── */
 function WorldCanvas({state,layer}){
   const cv=useRef(null),ct=useRef(null);
+
   useEffect(()=>{
-    const c=cv.current,p=ct.current;
-    if(!c||!p||!state||!state.grid_size)return;
+    const canvas=cv.current,box=ct.current;
+    if(!canvas||!box||!state||!state.grid_size)return;
     const gs=state.grid_size;
-    c.width=p.offsetWidth; c.height=p.offsetHeight;
-    const ctx=c.getContext('2d');
-    const cw=c.width/gs,ch=c.height/gs;
-    let grid,cm;
-    if(layer==='temperature'){grid=state.temperature;cm=tempColor}
-    else if(layer==='resources'){grid=state.resources;cm=resColor}
-    else{grid=state.total_biomass;cm=bioColor}
+
+    // Size canvas to container
+    const W=box.offsetWidth,H=box.offsetHeight;
+    canvas.width=W;canvas.height=H;
+    const ctx=canvas.getContext('2d');
+    const cw=W/gs,ch=H/gs;
+
+    // Select grid + color function
+    let grid,cmRGB;
+    if(layer==='temperature'){grid=state.temperature;cmRGB=tempColorRGB}
+    else if(layer==='resources'){grid=state.resources;cmRGB=resColorRGB}
+    else{grid=state.total_biomass;cmRGB=bioColorRGB}
     if(!grid||!grid.length||!grid[0])return;
-    for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
-      ctx.fillStyle=cm(grid[y][x]);
-      ctx.fillRect(x*cw,y*ch,cw+.5,ch+.5);
+
+    // ── Draw heatmap (fillRect per cell, simple & reliable)
+    for(let y=0;y<gs;y++){
+      for(let x=0;x<gs;x++){
+        const[cr,cg,cb]=cmRGB(grid[y][x]);
+        ctx.fillStyle=`rgb(${clamp(cr,0,255)|0},${clamp(cg,0,255)|0},${clamp(cb,0,255)|0})`;
+        ctx.fillRect(x*cw|0,y*ch|0,cw+0.5|0,ch+0.5|0);
+      }
     }
+
+    // ── Draw species dots with glow
     if(layer==='biomass'&&state.species_layers){
-      for(const[,l]of Object.entries(state.species_layers)){
-        if(!l.biomass||!l.biomass[0])continue;
-        ctx.fillStyle=`rgb(${l.color.join(',')})`;
-        for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
-          const v=l.biomass[y]?l.biomass[y][x]:0;
-          if(v>0.05){
-            const r=Math.min(cw,ch)*0.3*Math.min(v,3);
-            ctx.beginPath();ctx.arc(x*cw+cw/2,y*ch+ch/2,Math.max(1,r),0,Math.PI*2);ctx.fill();
+      ctx.save();
+      ctx.globalCompositeOperation='lighter';
+      for(const[,lay]of Object.entries(state.species_layers)){
+        if(!lay.biomass||!lay.biomass[0])continue;
+        const[cr,cg,cb]=lay.color;
+        for(let y=0;y<gs;y++){
+          if(!lay.biomass[y])continue;
+          for(let x=0;x<gs;x++){
+            const v=lay.biomass[y][x];
+            if(v>0.05){
+              const cx=x*cw+cw/2,cy=y*ch+ch/2;
+              const baseR=Math.min(cw,ch)*0.4;
+              const r=baseR*Math.min(1+v*0.3,2.5);
+              const alpha=clamp(v*0.5,0.15,0.85);
+              // Outer glow
+              const grad=ctx.createRadialGradient(cx,cy,r*0.2,cx,cy,r*1.8);
+              grad.addColorStop(0,`rgba(${cr},${cg},${cb},${alpha})`);
+              grad.addColorStop(0.6,`rgba(${cr},${cg},${cb},${alpha*0.3})`);
+              grad.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+              ctx.fillStyle=grad;
+              ctx.beginPath();ctx.arc(cx,cy,r*1.8,0,Math.PI*2);ctx.fill();
+              // Core
+              ctx.fillStyle=`rgba(${cr},${cg},${cb},${clamp(alpha*1.5,0,1)})`;
+              ctx.beginPath();ctx.arc(cx,cy,Math.max(1.5,r*0.5),0,Math.PI*2);ctx.fill();
+            }
           }
         }
       }
+      ctx.restore();
     }
+
+    // ── Auto-scale range from actual data
+    let rMin=Infinity,rMax=-Infinity;
+    for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
+      const v=grid[y][x];if(v<rMin)rMin=v;if(v>rMax)rMax=v;
+    }
+    if(rMin===rMax){rMin-=1;rMax+=1}
+    // Add 5% padding
+    const pad=(rMax-rMin)*0.05;rMin-=pad;rMax+=pad;
+
+    // Legend
+    const labels={biomass:'生物量',temperature:'温度 °C',resources:'资源丰度'};
+    const lx=10,ly=H-36,lw=160,lh=14;
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    ctx.fillRect(lx-4,ly-6,lw+8,lh+22);
+    for(let i=0;i<lw;i++){
+      const v=rMin+(i/lw)*(rMax-rMin);
+      const[cr,cg,cb]=cmRGB(v);
+      ctx.fillStyle=`rgb(${cr|0},${cg|0},${cb|0})`;
+      ctx.fillRect(lx+i,ly,1,lh);
+    }
+    ctx.fillStyle='rgba(255,255,255,0.85)';ctx.font='10px sans-serif';
+    ctx.fillText(String(rMin|0),lx,ly+lh+10);
+    ctx.textAlign='center';ctx.fillText(labels[layer]||'',lx+lw/2,ly+lh+10);
+    ctx.textAlign='right';ctx.fillText(String(rMax|0),lx+lw,ly+lh+10);
+    ctx.textAlign='left';
+
   },[state,layer]);
+
   useEffect(()=>{
-    const obs=new ResizeObserver(()=>{const c=cv.current,p=ct.current;if(c&&p){c.width=p.offsetWidth;c.height=p.offsetHeight}});
+    const obs=new ResizeObserver(()=>{
+      const c=cv.current,p=ct.current;if(c&&p){c.width=p.offsetWidth;c.height=p.offsetHeight}
+    });
     if(ct.current)obs.observe(ct.current);
     return()=>obs.disconnect();
   },[]);
+
   return <div className="world" ref={ct}><canvas ref={cv}/></div>;
 }
 
@@ -128,6 +215,33 @@ function Charts({h}){
   </div>;
 }
 
+/* ── Species Presets ─────────────────────────────────────────── */
+const SP_PRESETS={
+  photo_producer:{name:'光合生产者',metabolic_type:'photosynthesis',body_size:0.5,temp_optimum:25,temp_tolerance:40,reproduction_rate:1.0,reproduction_cost:0.5,defense:0.05,mobility:0,sensory_range:1,diet_preference:'producer',lifespan:800,adaptability:0.3},
+  chemo_producer:{name:'化能生产者',metabolic_type:'chemosynthesis',body_size:0.3,temp_optimum:-100,temp_tolerance:80,reproduction_rate:0.8,reproduction_cost:0.4,defense:0.02,mobility:0,sensory_range:1,diet_preference:'producer',lifespan:1200,adaptability:0.4},
+  herbivore:{name:'食草动物',metabolic_type:'heterotrophy',body_size:2.0,temp_optimum:20,temp_tolerance:30,reproduction_rate:0.4,reproduction_cost:2.0,defense:0.2,mobility:0.6,sensory_range:5,diet_preference:'consumer',lifespan:400,adaptability:0.3},
+  predator:{name:'捕食者',metabolic_type:'heterotrophy',body_size:4.0,temp_optimum:15,temp_tolerance:25,reproduction_rate:0.2,reproduction_cost:3.0,defense:0.4,mobility:0.8,sensory_range:8,diet_preference:'consumer',lifespan:600,adaptability:0.2},
+  omnivore:{name:'杂食者',metabolic_type:'heterotrophy',body_size:1.5,temp_optimum:10,temp_tolerance:50,reproduction_rate:0.5,reproduction_cost:1.5,defense:0.3,mobility:0.5,sensory_range:6,diet_preference:'omni',lifespan:500,adaptability:0.5},
+  extremophile:{name:'极端微生物',metabolic_type:'chemosynthesis',body_size:0.1,temp_optimum:-180,temp_tolerance:100,reproduction_rate:2.0,reproduction_cost:0.2,defense:0.01,mobility:0.05,sensory_range:1,diet_preference:'producer',lifespan:2000,adaptability:0.8},
+};
+
+const GENE_LABELS={
+  body_size:'体型',temp_optimum:'最适温度°C',temp_tolerance:'温度耐受°C',
+  reproduction_rate:'繁殖率',reproduction_cost:'繁殖消耗',defense:'防御力',
+  mobility:'移动速度',sensory_range:'感知范围',lifespan:'寿命',adaptability:'适应性',
+};
+const GENE_RANGES={
+  body_size:[0.1,10,0.1],temp_optimum:[-250,500,5],temp_tolerance:[5,150,1],
+  reproduction_rate:[0.01,3,0.05],reproduction_cost:[0.1,5,0.1],defense:[0,1,0.05],
+  mobility:[0,1,0.05],sensory_range:[1,15,1],lifespan:[10,2000,10],adaptability:[0,1,0.05],
+};
+
+function makeSpecies(name,preset){
+  const s=preset?{...SP_PRESETS[preset]}:{...SP_PRESETS.photo_producer,name:'新物种'};
+  if(name)s.name=name;
+  return s;
+}
+
 /* ── SetupPanel ──────────────────────────────────────────────── */
 const PLANET_PRESETS={
   titan:{name:'Titan',gravity:1.35,surface_temp:-179,albedo:0.22,axial_tilt:26.7,orbital_distance:9.5,atmospheric_pressure:1.45,co2_ratio:0,ch4_ratio:0.05,magnetic_field:0,season_period:10759},
@@ -136,32 +250,69 @@ const PLANET_PRESETS={
   kepler442b:{name:'Kepler-442b',gravity:12.16,surface_temp:-2,albedo:0.3,axial_tilt:15,orbital_distance:0.409,atmospheric_pressure:1.5,co2_ratio:0.01,ch4_ratio:0.001,magnetic_field:1.2,season_period:112},
 };
 
+function SpeciesEditor({sp,onChange,onDelete}){
+  const[open,setOpen]=useState(false);
+  const metaLabel=sp.metabolic_type==='photosynthesis'?'光合':sp.metabolic_type==='chemosynthesis'?'化能':'异养';
+  const dietLabel=sp.diet_preference==='producer'?'生产':sp.diet_preference==='consumer'?'消费':'杂食';
+  return <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:6,marginBottom:4}}>
+    <div style={{display:'flex',alignItems:'center',padding:'6px 8px',cursor:'pointer',gap:8}} onClick={()=>setOpen(!open)}>
+      <span style={{fontSize:12,flex:1}}>{sp.name} <span style={{color:'var(--text2)',fontSize:10}}>({metaLabel}/{dietLabel})</span></span>
+      <button style={{background:'var(--red)',color:'#fff',border:'none',borderRadius:3,padding:'2px 8px',cursor:'pointer',fontSize:10}} onClick={e=>{e.stopPropagation();onDelete()}}>删除</button>
+      <span style={{fontSize:10,color:'var(--text2)'}}>{open?'▲':'▼'}</span>
+    </div>
+    {open&&<div style={{padding:'4px 8px 8px',borderTop:'1px solid var(--border)'}}>
+      <div className="fr" style={{marginBottom:6}}><label style={{width:70}}>名称</label><input value={sp.name} onChange={e=>onChange({...sp,name:e.target.value})}/></div>
+      <div className="fr" style={{marginBottom:6}}><label style={{width:70}}>代谢</label><select value={sp.metabolic_type} onChange={e=>onChange({...sp,metabolic_type:e.target.value})}>
+        <option value="photosynthesis">光合</option><option value="chemosynthesis">化能</option><option value="heterotrophy">异养</option></select></div>
+      <div className="fr" style={{marginBottom:6}}><label style={{width:70}}>食性</label><select value={sp.diet_preference} onChange={e=>onChange({...sp,diet_preference:e.target.value})}>
+        <option value="producer">生产者</option><option value="consumer">消费者</option><option value="omni">杂食</option></select></div>
+      {Object.entries(GENE_LABELS).map(([k,label])=>{
+        const[min,max,step]=GENE_RANGES[k];
+        return <div key={k} className="fr" style={{marginBottom:4}}>
+          <label style={{width:70,fontSize:11}}>{label}</label>
+          <input type="range" min={min} max={max} step={step} value={sp[k]} onChange={e=>onChange({...sp,[k]:+e.target.value})} style={{flex:1}}/>
+          <span style={{width:50,textAlign:'right',fontSize:11,color:'var(--accent)'}}>{sp[k]}</span>
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
+
 function Setup({onStart,onClose,visible}){
-  const[p,setP]=useState('titan'),[pr,setPr]=useState(2),[co,setCo]=useState(1),[gr,setGr]=useState(50);
+  const[p,setP]=useState('titan'),[gr,setGr]=useState(50);
   const[custom,setCustom]=useState({...PLANET_PRESETS.titan,planet_name:'Custom Planet'});
   const[envCfg,setEnvCfg]=useState(null);
   const[aiSel,setAiSel]=useState('');
-  useEffect(()=>{fetch('/api/config').then(r=>r.json()).then(c=>{
-    setEnvCfg(c);
-    if(c.provider)setAiSel(c.provider);
-  }).catch(()=>{})},[]);
+  const[species,setSpecies]=useState([
+    makeSpecies('生产者A','photo_producer'),
+    makeSpecies('化能菌','chemo_producer'),
+    makeSpecies('食草者','herbivore'),
+  ]);
+  const[showPresets,setShowPresets]=useState(false);
+  useEffect(()=>{fetch('/api/config').then(r=>r.json()).then(c=>{setEnvCfg(c);if(c.provider)setAiSel(c.provider)}).catch(()=>{})},[]);
 
   if(!visible)return null;
 
   const isCustom=p==='custom';
   const go=()=>{
     const c=envCfg||{};
-    const body={producers:pr,consumers:co,grid_size:gr,ai:aiSel||null,ai_model:null,ai_key:null,ai_base_url:null,ai_interval:c.ai_interval||60};
+    const body={grid_size:gr,ai:aiSel||null,ai_model:null,ai_key:null,ai_base_url:null,ai_interval:c.ai_interval||60,
+      custom_species:species.map((s,i)=>({...s,seed_area:i===0?'center':'random'}))};
     if(isCustom){body.planet='custom';body.custom_planet={...custom,name:custom.planet_name}}
     else{body.planet=p}
     onStart(body);
   };
 
   const C=custom;const setC=(k,v)=>setCustom({...C,[k]:v});
+  const addSp=(preset)=>{setSpecies([...species,makeSpecies('',preset)]);setShowPresets(false)};
+  const delSp=(i)=>setSpecies(species.filter((_,idx)=>idx!==i));
+  const updSp=(i,sp)=>setSpecies(species.map((s,idx)=>idx===i?sp:s));
 
   return <div className="ov">
-    <div className="pnl">
+    <div className="pnl" style={{maxHeight:'85vh',overflowY:'auto'}}>
       <h2>新建模拟</h2>
+
+      {/* Planet */}
       <div className="fr"><label>星球</label><select value={p} onChange={e=>setP(e.target.value)}>
         <option value="titan">土卫六 Titan (-179°C)</option><option value="mars">火星 Mars (-60°C)</option>
         <option value="europa">木卫二 Europa (-160°C)</option><option value="kepler442b">开普勒-442b (-2°C)</option>
@@ -184,8 +335,8 @@ function Setup({onStart,onClose,visible}){
             onClick={()=>setCustom({...v,planet_name:v.name})}>{v.name}</button>)}
         </div>
       </div>}
-      <div className="fr"><label>生产者</label><input type="number" value={pr} min={1} max={5} onChange={e=>setPr(+e.target.value)}/></div>
-      <div className="fr"><label>消费者</label><input type="number" value={co} min={0} max={5} onChange={e=>setCo(+e.target.value)}/></div>
+
+      {/* Grid + AI */}
       <div className="fr"><label>网格大小</label><select value={gr} onChange={e=>setGr(+e.target.value)}>
         <option value={30}>30×30</option><option value={50}>50×50</option><option value={80}>80×80</option></select></div>
       <div className="fr"><label>AI 引擎</label><select value={aiSel} onChange={e=>setAiSel(e.target.value)}>
@@ -194,6 +345,22 @@ function Setup({onStart,onClose,visible}){
         {envCfg&&envCfg.claude_key_set&&<option value="claude">Claude ({envCfg.claude_model})</option>}
         {envCfg&&envCfg.custom_key_set&&<option value="custom">{envCfg.custom_model||'Custom'} ({envCfg.custom_base_url})</option>}
       </select></div>
+
+      {/* Species */}
+      <div style={{borderTop:'1px solid var(--border)',marginTop:10,paddingTop:10}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <span style={{fontSize:13,color:'var(--accent)',fontWeight:600}}>物种 ({species.length})</span>
+          <button style={{background:'var(--green)',color:'#000',border:'none',borderRadius:4,padding:'3px 10px',cursor:'pointer',fontSize:11}} onClick={()=>setShowPresets(!showPresets)}>+ 添加物种</button>
+        </div>
+        {showPresets&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:4,marginBottom:8}}>
+          {Object.entries(SP_PRESETS).map(([k,v])=><button key={k} style={{padding:'5px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:10}}
+            onClick={()=>addSp(k)}>{v.name}</button>)}
+          <button style={{padding:'5px',background:'var(--bg)',border:'1px dashed var(--text2)',color:'var(--text2)',borderRadius:4,cursor:'pointer',fontSize:10}}
+            onClick={()=>addSp(null)}>空白物种</button>
+        </div>}
+        {species.map((sp,i)=><SpeciesEditor key={i} sp={sp} onChange={s=>updSp(i,s)} onDelete={()=>delSp(i)}/>)}
+      </div>
+
       <button className="go" onClick={go}>开始模拟</button>
       <button style={{width:'100%',padding:'8px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:7,cursor:'pointer',fontSize:13,marginTop:6}} onClick={()=>onClose()}>取消</button>
     </div>

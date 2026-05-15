@@ -33,6 +33,7 @@ class SimManager:
         self._last_snapshot_tick: int = 0
         self._planet_name: str = ""
         self._grid_size: int = 50
+        self._species_counter: int = 0
         self._auto_save: bool = False
         self._auto_save_interval: int = 500
         self._last_auto_save_tick: int = 0
@@ -51,6 +52,7 @@ class SimManager:
         ai_provider: AIProvider | None = None,
         ai_interval: int = 60,
         custom_planet: dict | None = None,
+        custom_species: list[dict] | None = None,
     ):
         if self._running:
             self.stop()
@@ -71,14 +73,43 @@ class SimManager:
             ai_interval=ai_interval,
         )
 
-        for i in range(producers):
-            genome = load_species_template("producer_photo" if i == 0 else "producer_chemo")
-            sp = Species.create(f"producer_{i}", f"Producer-{i}", genome, grid_size=grid_size)
-            self.engine.add_species(sp)
-        for i in range(consumers):
-            genome = load_species_template("consumer_herbivore")
-            sp = Species.create(f"consumer_{i}", f"Consumer-{i}", genome, grid_size=grid_size, seed_area="random")
-            self.engine.add_species(sp)
+        if custom_species:
+            for i, cs in enumerate(custom_species):
+                genes = {}
+                for k, v in cs.items():
+                    if k in ("name", "seed_area", "metabolic_type", "diet_preference"):
+                        continue
+                    if isinstance(v, (int, float)):
+                        from simulation.models import Gene
+                        bounds = {
+                            "body_size": (0.1, 10.0, 0.03), "temp_optimum": (-250.0, 500.0, 0.02),
+                            "temp_tolerance": (5.0, 150.0, 0.02), "reproduction_rate": (0.01, 3.0, 0.03),
+                            "reproduction_cost": (0.1, 5.0, 0.02), "defense": (0.0, 1.0, 0.04),
+                            "mobility": (0.0, 1.0, 0.03), "sensory_range": (1.0, 15.0, 0.03),
+                            "lifespan": (10.0, 2000.0, 0.02), "adaptability": (0.0, 1.0, 0.04),
+                        }
+                        mn, mx, mr = bounds.get(k, (0, 1, 0.05))
+                        genes[k] = Gene(value=float(v), min_value=mn, max_value=mx, mutation_rate=mr)
+                genes["metabolic_type"] = cs.get("metabolic_type", "photosynthesis")
+                genes["diet_preference"] = cs.get("diet_preference", "producer")
+                from simulation.models import Genome
+                genome = Genome(genes=genes)
+                sp = Species.create(
+                    species_id=self._next_species_id(),
+                    name=cs.get("name", f"Species-{i}"),
+                    genome=genome, grid_size=grid_size,
+                    seed_area=cs.get("seed_area", "center"),
+                )
+                self.engine.add_species(sp)
+        else:
+            for i in range(producers):
+                genome = load_species_template("producer_photo" if i == 0 else "producer_chemo")
+                sp = Species.create(f"producer_{i}", f"Producer-{i}", genome, grid_size=grid_size)
+                self.engine.add_species(sp)
+            for i in range(consumers):
+                genome = load_species_template("consumer_herbivore")
+                sp = Species.create(f"consumer_{i}", f"Consumer-{i}", genome, grid_size=grid_size, seed_area="random")
+                self.engine.add_species(sp)
 
         # Create DB run record
         ai_name = type(ai_provider).__name__ if ai_provider else None
@@ -120,6 +151,10 @@ class SimManager:
 
     def set_speed(self, tps: int):
         self._speed = max(1, min(200, tps))
+
+    def _next_species_id(self) -> str:
+        self._species_counter = getattr(self, '_species_counter', 0) + 1
+        return f"sp_{self._species_counter:03d}"
 
     # ── websocket broadcast ────────────────────────────────────
 

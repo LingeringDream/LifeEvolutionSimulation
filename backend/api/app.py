@@ -28,9 +28,26 @@ class CustomPlanet(BaseModel):
     magnetic_field: float = 1.0
     season_period: int = 365
 
+class CustomSpecies(BaseModel):
+    name: str = "Species"
+    metabolic_type: str = "photosynthesis"
+    body_size: float = 1.0
+    temp_optimum: float = 20.0
+    temp_tolerance: float = 30.0
+    reproduction_rate: float = 0.5
+    reproduction_cost: float = 1.0
+    defense: float = 0.1
+    mobility: float = 0.3
+    sensory_range: float = 3.0
+    diet_preference: str = "producer"
+    lifespan: float = 500.0
+    adaptability: float = 0.3
+    seed_area: str = "center"
+
 class StartRequest(BaseModel):
     planet: str = "titan"
     custom_planet: CustomPlanet | None = None
+    custom_species: list[CustomSpecies] | None = None
     producers: int = 2
     consumers: int = 1
     grid_size: int = 50
@@ -69,6 +86,7 @@ async def start_sim(req: StartRequest):
             base_url=req.ai_base_url,
         )
     custom_cfg = req.custom_planet.model_dump() if req.custom_planet else None
+    custom_sp = [s.model_dump() for s in req.custom_species] if req.custom_species else None
     sim.start(
         planet=req.planet,
         producers=req.producers,
@@ -77,6 +95,7 @@ async def start_sim(req: StartRequest):
         ai_provider=ai_provider,
         ai_interval=req.ai_interval,
         custom_planet=custom_cfg,
+        custom_species=custom_sp,
     )
     return {"status": "started", "planet": req.planet}
 
