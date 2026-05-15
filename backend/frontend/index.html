@@ -12,7 +12,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--text2:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922}
 body{font-family:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh}
-.app{display:grid;grid-template-columns:1fr 300px;grid-template-rows:52px 1fr 190px;height:100vh;gap:1px;background:var(--border)}
+.app{display:grid;grid-template-columns:1fr 300px;grid-template-rows:52px 1fr 180px 260px;height:100vh;gap:1px;background:var(--border)}
 header{grid-column:1/-1;background:var(--card);display:flex;align-items:center;padding:0 16px;gap:12px}
 header h1{font-size:16px;font-weight:600;color:var(--accent);white-space:nowrap}
 header .st{font-size:12px;color:var(--text2);white-space:nowrap}
@@ -50,6 +50,21 @@ header .st{font-size:12px;color:var(--text2);white-space:nowrap}
 .go:hover{opacity:.9}
 .ai-s{border-top:1px solid var(--border);margin-top:12px;padding-top:12px}
 .ai-s h3{font-size:13px;color:var(--orange);margin-bottom:8px}
+.data-row{grid-column:1/-1;background:var(--card);display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1px;padding:6px}
+.dc{background:var(--bg);border-radius:5px;padding:10px;overflow-y:auto}
+.dc h4{font-size:11px;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.br{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px}
+.bl{width:55px;color:var(--text2);text-align:right;flex-shrink:0}
+.bt{flex:1;height:12px;background:var(--card);border-radius:3px;overflow:hidden}
+.bf{height:100%;border-radius:3px;transition:width 0.3s}
+.bv{width:45px;text-align:right;font-size:10px;color:var(--text);flex-shrink:0}
+.spt{width:100%;font-size:10px;border-collapse:collapse}
+.spt th{color:var(--text2);font-weight:500;text-align:left;padding:2px 4px;border-bottom:1px solid var(--border)}
+.spt td{padding:2px 4px;border-bottom:1px solid var(--border)}
+.ei{font-size:10px;padding:2px 0;border-bottom:1px solid var(--border);display:flex;gap:6px}
+.et{color:var(--text2);width:40px;flex-shrink:0}
+.ety{width:50px;flex-shrink:0;font-weight:600}
+.ed{color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -378,6 +393,80 @@ function Setup({onStart,onClose,visible}){
   </div>;
 }
 
+/* ── DataPanel ───────────────────────────────────────────────── */
+function Bar({label,value,max,color}){
+  const pct=clamp(value/max*100,0,100);
+  return <div className="br"><span className="bl">{label}</span><div className="bt"><div className="bf" style={{width:pct+'%',background:color}}/></div><span className="bv">{value.toFixed(4)}</span></div>;
+}
+
+function DataPanel({state,events}){
+  if(!state)return <div className="data-row"><div className="dc"><h4>等待数据...</h4></div></div>;
+  const env=state.environment||{};
+  const atm=env.atmosphere||{};
+  const sp=state.species||[];
+
+  // Compute interaction summary
+  const totalBio=sp.reduce((s,x)=>s+x.biomass,0);
+  const prodBio=sp.filter(x=>x.metabolic_type!=='heterotrophy').reduce((s,x)=>s+x.biomass,0);
+  const consBio=sp.filter(x=>x.metabolic_type==='heterotrophy').reduce((s,x)=>s+x.biomass,0);
+  const nProd=sp.filter(x=>x.metabolic_type!=='heterotrophy').length;
+  const nCons=sp.filter(x=>x.metabolic_type==='heterotrophy').length;
+
+  // Avg genes
+  const avgGenes={};
+  sp.forEach(s=>{if(s.genes)Object.entries(s.genes).forEach(([k,v])=>{if(typeof v==='number'){avgGenes[k]=(avgGenes[k]||0)+v/sp.length}})});
+
+  return <div className="data-row">
+    {/* Card 1: Atmosphere */}
+    <div className="dc">
+      <h4>大气成分</h4>
+      <Bar label="O₂" value={atm.O2||0} max={0.5} color="#3fb950"/>
+      <Bar label="CO₂" value={atm.CO2||0} max={1.0} color="#d29922"/>
+      <Bar label="CH₄" value={atm.CH4||0} max={0.3} color="#f85149"/>
+      <Bar label="N₂" value={atm.N2||0} max={1.0} color="#58a6ff"/>
+      <div style={{fontSize:10,color:'var(--text2)',marginTop:6}}>气压: {(atm.Pressure||0).toFixed(2)} atm</div>
+    </div>
+
+    {/* Card 2: Interactions */}
+    <div className="dc">
+      <h4>生态交互</h4>
+      <Bar label="总生物量" value={totalBio} max={500} color="#3fb950"/>
+      <Bar label="生产者" value={prodBio} max={300} color="#2ea043"/>
+      <Bar label="消费者" value={consBio} max={200} color="#f85149"/>
+      <Bar label="资源均值" value={env.resources_mean||0} max={2} color="#58a6ff"/>
+      <Bar label="多样性" value={sp.length>1?-sp.reduce((s,x)=>{const p=Math.max(x.biomass,0.001)/Math.max(totalBio,0.001);return s+p*Math.log(p)},0):0} max={3} color="#d29922"/>
+      <div style={{fontSize:10,color:'var(--text2)',marginTop:6}}>物种: {nProd} 生产 + {nCons} 消费</div>
+    </div>
+
+    {/* Card 3: Species table */}
+    <div className="dc" style={{overflowX:'auto'}}>
+      <h4>物种详情</h4>
+      <table className="spt"><thead><tr>
+        <th>名称</th><th>生物量</th><th>代谢</th><th>食性</th>
+      </tr></thead><tbody>
+        {sp.map(s=><tr key={s.id}>
+          <td><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:`rgb(${s.color.join(',')})`,marginRight:4}}/>{s.name}</td>
+          <td>{s.biomass.toFixed(2)}</td>
+          <td>{s.metabolic_type==='photosynthesis'?'光合':s.metabolic_type==='chemosynthesis'?'化能':'异养'}</td>
+          <td>{(s.genes?.diet_preference==='producer'?'生产':s.genes?.diet_preference==='consumer'?'消费':'杂食')||'-'}</td>
+        </tr>)}
+      </tbody></table>
+    </div>
+
+    {/* Card 4: Events */}
+    <div className="dc">
+      <h4>事件日志</h4>
+      {(events||[]).slice(-12).reverse().map((e,i)=><div key={i} className="ei">
+        <span className="et">[{e.tick}]</span>
+        <span className="ety" style={{color:e.type==='extinction'?'var(--red)':e.type==='mutation'?'var(--orange)':e.type==='speciation'?'var(--green)':'var(--text2)'}}>
+          {e.type==='extinction'?'灭绝':e.type==='mutation'?'突变':e.type==='speciation'?'分化':e.type==='ai_narrative'?'AI':e.type}
+        </span>
+        <span className="ed">{e.desc}</span>
+      </div>)}
+    </div>
+  </div>;
+}
+
 /* ── App ─────────────────────────────────────────────────────── */
 function App(){
   const[setup,setSetup]=useState(false);
@@ -523,6 +612,7 @@ function App(){
     </div>
 
     <Charts h={h.current}/>
+    <DataPanel state={stateData} events={events}/>
     <Setup visible={setup} onStart={startSim} onClose={()=>setSetup(false)}/>
 
     {/* Load dialog */}
