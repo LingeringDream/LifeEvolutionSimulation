@@ -150,25 +150,32 @@ function WorldCanvas({state,layer}){
       for(const[,lay]of Object.entries(state.species_layers)){
         if(!lay.biomass||!lay.biomass[0])continue;
         const[cr,cg,cb]=lay.color;
+        // Brighten color for glow
+        const br=Math.min(255,cr+60),bg=Math.min(255,cg+60),bb=Math.min(255,cb+60);
         for(let y=0;y<gs;y++){
           if(!lay.biomass[y])continue;
           for(let x=0;x<gs;x++){
             const v=lay.biomass[y][x];
-            if(v>0.05){
+            if(v>0.03){
               const cx=x*cw+cw/2,cy=y*ch+ch/2;
-              const baseR=Math.min(cw,ch)*0.4;
-              const r=baseR*Math.min(1+v*0.3,2.5);
-              const alpha=clamp(v*0.5,0.15,0.85);
-              // Outer glow
-              const grad=ctx.createRadialGradient(cx,cy,r*0.2,cx,cy,r*1.8);
-              grad.addColorStop(0,`rgba(${cr},${cg},${cb},${alpha})`);
-              grad.addColorStop(0.6,`rgba(${cr},${cg},${cb},${alpha*0.3})`);
+              const baseR=Math.min(cw,ch)*0.45;
+              const r=baseR*Math.min(1+v*0.4,3);
+              const alpha=clamp(v*0.6,0.2,0.9);
+              // Outer glow (brighter)
+              const grad=ctx.createRadialGradient(cx,cy,r*0.1,cx,cy,r*2);
+              grad.addColorStop(0,`rgba(${br},${bg},${bb},${alpha})`);
+              grad.addColorStop(0.4,`rgba(${cr},${cg},${cb},${alpha*0.5})`);
               grad.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
               ctx.fillStyle=grad;
-              ctx.beginPath();ctx.arc(cx,cy,r*1.8,0,Math.PI*2);ctx.fill();
-              // Core
-              ctx.fillStyle=`rgba(${cr},${cg},${cb},${clamp(alpha*1.5,0,1)})`;
-              ctx.beginPath();ctx.arc(cx,cy,Math.max(1.5,r*0.5),0,Math.PI*2);ctx.fill();
+              ctx.beginPath();ctx.arc(cx,cy,r*2,0,Math.PI*2);ctx.fill();
+              // Core dot (bright)
+              ctx.fillStyle=`rgba(${br},${bg},${bb},${clamp(alpha*1.8,0,1)})`;
+              ctx.beginPath();ctx.arc(cx,cy,Math.max(2,r*0.55),0,Math.PI*2);ctx.fill();
+              // Hot center for high biomass
+              if(v>1){
+                ctx.fillStyle=`rgba(255,255,255,${clamp((v-1)*0.3,0,0.5)})`;
+                ctx.beginPath();ctx.arc(cx,cy,Math.max(1,r*0.25),0,Math.PI*2);ctx.fill();
+              }
             }
           }
         }
