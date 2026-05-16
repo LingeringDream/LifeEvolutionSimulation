@@ -77,27 +77,32 @@ async def favicon():
 
 @app.post("/api/simulation/start")
 async def start_sim(req: StartRequest):
-    ai_provider = None
-    if req.ai:
-        ai_provider = create_ai_provider(
-            provider=req.ai,
-            api_key=req.ai_key,
-            model=req.ai_model,
-            base_url=req.ai_base_url,
+    try:
+        ai_provider = None
+        if req.ai:
+            ai_provider = create_ai_provider(
+                provider=req.ai,
+                api_key=req.ai_key,
+                model=req.ai_model,
+                base_url=req.ai_base_url,
+            )
+        custom_cfg = req.custom_planet.model_dump() if req.custom_planet else None
+        custom_sp = [s.model_dump() for s in req.custom_species] if req.custom_species else None
+        sim.start(
+            planet=req.planet,
+            producers=req.producers,
+            consumers=req.consumers,
+            grid_size=req.grid_size,
+            ai_provider=ai_provider,
+            ai_interval=req.ai_interval,
+            custom_planet=custom_cfg,
+            custom_species=custom_sp,
         )
-    custom_cfg = req.custom_planet.model_dump() if req.custom_planet else None
-    custom_sp = [s.model_dump() for s in req.custom_species] if req.custom_species else None
-    sim.start(
-        planet=req.planet,
-        producers=req.producers,
-        consumers=req.consumers,
-        grid_size=req.grid_size,
-        ai_provider=ai_provider,
-        ai_interval=req.ai_interval,
-        custom_planet=custom_cfg,
-        custom_species=custom_sp,
-    )
-    return {"status": "started", "planet": req.planet}
+        return {"status": "started", "planet": req.planet}
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"status": "error", "message": str(e)}
 
 
 @app.post("/api/simulation/pause")
@@ -137,7 +142,8 @@ async def list_planets():
 
 @app.get("/api/config")
 async def get_config():
-    """Return AI config from .env (key masked)."""
+    """Return AI config from .env (key masked) + GPU status."""
+    from simulation.gpu_backend import gpu_info
     import os
     def mask(key):
         if not key: return ""
@@ -156,6 +162,7 @@ async def get_config():
         "custom_key_set": bool(os.environ.get("CUSTOM_API_KEY")),
         "custom_key_preview": mask(os.environ.get("CUSTOM_API_KEY", "")),
         "ai_interval": int(os.environ.get("AI_INTERVAL", "60")),
+        "gpu": gpu_info(),
     }
 
 

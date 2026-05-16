@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 from dataclasses import dataclass, field
 from simulation.models import Genome, MetabolicType
+from simulation.gpu_backend import to_numpy
 
 
 @dataclass
@@ -75,10 +76,14 @@ class Species:
         )
 
     def total_biomass(self) -> float:
-        return float(np.sum(self.biomass))
+        return float(to_numpy(self.biomass).sum())
 
     def is_alive(self) -> bool:
-        return self.total_biomass() > 0.001
+        try:
+            s = self.biomass.sum()
+            return float(s) > 0.001
+        except Exception:
+            return float(to_numpy(self.biomass).sum()) > 0.001
 
     def mean_fitness(self) -> float:
         return 0.5

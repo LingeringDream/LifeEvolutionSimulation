@@ -1,8 +1,8 @@
-"""Core simulation engine with rich species-environment interactions."""
+"""Core simulation engine with rich species-environment interactions + GPU acceleration."""
 from __future__ import annotations
 import asyncio
-import numpy as np
-from scipy.signal import convolve2d
+import numpy as np  # Keep for random/scalar ops
+from simulation.gpu_backend import xp, to_numpy, to_gpu, GPU_AVAILABLE
 from simulation.environment import Environment, PlanetConfig
 from simulation.species import Species, EvolutionEvent
 from simulation.food_web import FoodWeb
@@ -46,24 +46,42 @@ class SimulationEngine:
         self.ai_interval = ai_interval
         self._species_counter = 0
 
-        # New interaction layers
-        self.dead_biomass = np.zeros((grid_size, grid_size))  # Decomposition pool
-        self.toxins = np.zeros((grid_size, grid_size))        # Toxin accumulation
-        self.nutrients = np.ones((grid_size, grid_size)) * 0.5  # Nutrient cycling
+        # New interaction layers (on GPU)
+        self.dead_biomass = xp.zeros((grid_size, grid_size))
+        self.toxins = xp.zeros((grid_size, grid_size))
+        self.nutrients = xp.ones((grid_size, grid_size)) * 0.5
 
-        self.diffusion_kernel = np.array([
-            [0.05, 0.1, 0.05],
-            [0.1, 0.4, 0.1],
-            [0.05, 0.1, 0.05],
-        ])
+        # Diffusion weights for GPU-friendly convolution
+        self._diff_center = 0.4
+        self._diff_edge = 0.1
+        self._diff_corner = 0.05
 
     def _next_species_id(self) -> str:
         self._species_counter += 1
         return f"sp_{self._species_counter:03d}"
 
     def add_species(self, species: Species):
+        # Move biomass to GPU
+        species.biomass = to_gpu(species.biomass)
         self.species_list.append(species)
         self.food_web.register(species)
+
+    def _diffuse(self, grid):
+        """GPU-friendly 3x3 diffusion (no scipy dependency)."""
+        c, e, co = self._diff_center, self._diff_edge, self._diff_corner
+        s = self.grid_size
+        result = grid * c
+        # Edge neighbors (shift)
+        result += xp.roll(grid, 1, axis=0) * e   # up
+        result += xp.roll(grid, -1, axis=0) * e   # down
+        result += xp.roll(grid, 1, axis=1) * e   # left
+        result += xp.roll(grid, -1, axis=1) * e   # right
+        # Corner neighbors
+        result += xp.roll(xp.roll(grid, 1, axis=0), 1, axis=1) * co
+        result += xp.roll(xp.roll(grid, 1, axis=0), -1, axis=1) * co
+        result += xp.roll(xp.roll(grid, -1, axis=0), 1, axis=1) * co
+        result += xp.roll(xp.roll(grid, -1, axis=0), -1, axis=1) * co
+        return result
 
     def step(self):
         self.tick += 1
@@ -71,19 +89,19 @@ class SimulationEngine:
         # ── 1. Decomposition: dead_biomass → resources ─────────
         decay_rate = 0.05
         decomposed = self.dead_biomass * decay_rate
-        self.env.resources = np.clip(self.env.resources + decomposed * 0.8, 0, 3)
-        self.nutrients = np.clip(self.nutrients + decomposed * 0.2, 0, 2)
+        self.env.resources = xp.clip(self.env.resources + decomposed * 0.8, 0, 3)
+        self.nutrients = xp.clip(self.nutrients + decomposed * 0.2, 0, 2)
         self.dead_biomass -= decomposed
-        self.dead_biomass = np.clip(self.dead_biomass, 0, 100)
+        self.dead_biomass = xp.clip(self.dead_biomass, 0, 100)
 
         # ── 2. Toxin decay ─────────────────────────────────────
         self.toxins *= 0.98  # Slow natural decay
 
         # ── 3. Compute total biomass for interactions ──────────
-        total_biomass = np.zeros((self.grid_size, self.grid_size))
-        producer_biomass = np.zeros((self.grid_size, self.grid_size))
-        consumer_biomass = np.zeros((self.grid_size, self.grid_size))
-        max_body_size = np.zeros((self.grid_size, self.grid_size))
+        total_biomass = xp.zeros((self.grid_size, self.grid_size))
+        producer_biomass = xp.zeros((self.grid_size, self.grid_size))
+        consumer_biomass = xp.zeros((self.grid_size, self.grid_size))
+        max_body_size = xp.zeros((self.grid_size, self.grid_size))
 
         for sp in self.species_list:
             if not sp.is_alive():
@@ -95,7 +113,7 @@ class SimulationEngine:
                 producer_biomass += sp.biomass
             else:
                 consumer_biomass += sp.biomass
-            max_body_size = np.maximum(max_body_size, sp.biomass * bs)
+            max_body_size = xp.maximum(max_body_size, sp.biomass * bs)
 
         # ── 4. Thermal biology: biomass generates heat ─────────
         biomass_heat = total_biomass * 0.02 + consumer_biomass * 0.01
@@ -126,8 +144,8 @@ class SimulationEngine:
         self.species_list = [s for s in self.species_list if s.is_alive()]
 
         # ── 8. Nutrient & toxin diffusion ──────────────────────
-        self.nutrients = convolve2d(self.nutrients, self.diffusion_kernel, mode='same')
-        self.toxins = convolve2d(self.toxins, self.diffusion_kernel, mode='same') * 0.95
+        self.nutrients = self._diffuse(self.nutrients)
+        self.toxins = self._diffuse(self.toxins) * 0.95
 
     def _process_species(self, sp: Species, total_biomass, producer_biomass, consumer_biomass, max_body_size):
         meta_type = sp.genome.get_enum("metabolic_type")
@@ -144,63 +162,63 @@ class SimulationEngine:
         G = self.grid_size
 
         # ── A. Temperature fitness ─────────────────────────────
-        temp_dist = np.abs(self.env.temperature - temp_opt)
-        temp_fitness = np.exp(-(temp_dist ** 2) / (2 * temp_tol ** 2))
+        temp_dist = xp.abs(self.env.temperature - temp_opt)
+        temp_fitness = xp.exp(-(temp_dist ** 2) / (2 * temp_tol ** 2))
 
         # ── B. Resource & light fitness ────────────────────────
         if meta_type == "photosynthesis":
             # Light competition: large organisms block light
-            light_blocked = np.clip(max_body_size / (max_body_size + body_size + 0.1), 0, 0.8)
+            light_blocked = xp.clip(max_body_size / (max_body_size + body_size + 0.1), 0, 0.8)
             effective_light = self.env.light * (1 - light_blocked * 0.5)
-            resource_fitness = np.clip(effective_light * 2.0, 0, 2) * np.clip(self.env.resources, 0, 2)
+            resource_fitness = xp.clip(effective_light * 2.0, 0, 2) * xp.clip(self.env.resources, 0, 2)
             # Nutrient boost from consumers (mutualism)
             nutrient_boost = 1.0 + self.nutrients * 0.3
             resource_fitness *= nutrient_boost
         elif meta_type == "chemosynthesis":
-            resource_fitness = np.clip(self.env.resources * 1.5, 0, 2)
+            resource_fitness = xp.clip(self.env.resources * 1.5, 0, 2)
         else:
-            resource_fitness = np.clip(self.env.resources, 0, 2)
+            resource_fitness = xp.clip(self.env.resources, 0, 2)
 
         # ── C. Atmosphere fitness ──────────────────────────────
         o2 = self.env.atmosphere.get("O2", 0)
         co2 = self.env.atmosphere.get("CO2", 0)
         if meta_type == "heterotrophy":
             # Heterotrophs need O2, stressed by high CO2
-            o2_fitness = np.clip(o2 * 10, 0.1, 1.5)  # More O2 = better
-            co2_stress = np.clip(co2 * 5, 0, 0.5)     # High CO2 = stress
+            o2_fitness = xp.clip(o2 * 10, 0.1, 1.5)  # More O2 = better
+            co2_stress = xp.clip(co2 * 5, 0, 0.5)     # High CO2 = stress
             atm_fitness = o2_fitness - co2_stress
         elif meta_type == "photosynthesis":
             # Producers use CO2, benefit from higher CO2
-            atm_fitness = 1.0 + np.clip(co2 * 3, 0, 0.5)
+            atm_fitness = 1.0 + xp.clip(co2 * 3, 0, 0.5)
         else:
             atm_fitness = 1.0
 
-        atm_fitness = np.clip(atm_fitness, 0.2, 2.0)
+        atm_fitness = xp.clip(atm_fitness, 0.2, 2.0)
 
         # ── D. Toxin stress ────────────────────────────────────
         toxin_resistance = adaptability * 0.5 + defense * 0.5
-        toxin_stress = np.clip(self.toxins * (1 - toxin_resistance), 0, 0.8)
+        toxin_stress = xp.clip(self.toxins * (1 - toxin_resistance), 0, 0.8)
 
         # ── E. Competition & carrying capacity ─────────────────
         competition = 1.0 / (1.0 + total_biomass * 0.08)
         # Carrying capacity: logistic limit based on resources
-        carrying = np.clip(1.0 - sp.biomass * 0.02, 0, 1)
+        carrying = xp.clip(1.0 - sp.biomass * 0.02, 0, 1)
 
         # ── F. Combined fitness ────────────────────────────────
         fitness = temp_fitness * resource_fitness * atm_fitness * competition * carrying
         fitness = fitness * (1 - toxin_stress)
-        fitness = np.clip(fitness, 0, 3)
+        fitness = xp.clip(fitness, 0, 3)
 
         # ── G. Births ─────────────────────────────────────────
         births = sp.biomass * rep_rate * fitness * 0.1
         resource_cost = births * rep_cost * body_size * 0.08
-        self.env.resources = np.clip(self.env.resources - resource_cost, 0, 3)
+        self.env.resources = xp.clip(self.env.resources - resource_cost, 0, 3)
 
         # ── H. Deaths ─────────────────────────────────────────
         base_mortality = 1.0 / max(lifespan, 1)
-        env_stress = np.clip(1.0 - temp_fitness, 0, 1) * 0.04
-        starvation = np.clip(1.0 - resource_fitness, 0, 1) * 0.02
-        atm_stress = np.clip(1.0 - atm_fitness, 0, 1) * 0.02
+        env_stress = xp.clip(1.0 - temp_fitness, 0, 1) * 0.04
+        starvation = xp.clip(1.0 - resource_fitness, 0, 1) * 0.02
+        atm_stress = xp.clip(1.0 - atm_fitness, 0, 1) * 0.02
         deaths = sp.biomass * (base_mortality + env_stress + starvation + atm_stress)
 
         # ── I. Predation ───────────────────────────────────────
@@ -210,13 +228,13 @@ class SimulationEngine:
                 predator = self._find_species(pred_id)
                 if predator is not None:
                     consumed = sp.biomass * rate * predator.biomass * 0.05
-                    consumed = np.minimum(consumed, sp.biomass)
+                    consumed = xp.minimum(consumed, sp.biomass)
                     sp.biomass -= consumed
                     predator.biomass += consumed * 0.5
 
         # ── J. Update biomass ──────────────────────────────────
         sp.biomass = sp.biomass + births - deaths
-        sp.biomass = np.clip(sp.biomass, 0, 50)
+        sp.biomass = xp.clip(sp.biomass, 0, 50)
 
         # ── K. Dead biomass from natural deaths ────────────────
         self.dead_biomass += deaths * body_size * 0.5
@@ -224,11 +242,11 @@ class SimulationEngine:
         # ── L. Diffusion ───────────────────────────────────────
         if mobility > 0.01:
             diffusion_strength = mobility * 0.3
-            diffused = convolve2d(sp.biomass, self.diffusion_kernel, mode='same')
+            diffused = self._diffuse(sp.biomass)
             sp.biomass = sp.biomass * (1 - diffusion_strength) + diffused * diffusion_strength
 
         # ── M. Atmosphere feedback ─────────────────────────────
-        biomass_sum = np.sum(sp.biomass)
+        biomass_sum = float(to_numpy(sp.biomass).sum())
         if meta_type == "photosynthesis":
             rate = biomass_sum * 0.00015
             self.env.atmosphere["O2"] = min(0.5, self.env.atmosphere.get("O2", 0) + rate)
