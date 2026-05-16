@@ -216,7 +216,7 @@ function WorldCanvas({state,layer}){
 }
 
 /* ── Charts ──────────────────────────────────────────────────── */
-function Charts({h}){
+function Charts({h,tick}){
   const pR=useRef(null),dR=useRef(null),eR=useRef(null);
   const pC=useRef(null),dC=useRef(null),eC=useRef(null);
   useEffect(()=>{
@@ -227,13 +227,13 @@ function Charts({h}){
     return()=>{pC.current?.destroy();dC.current?.destroy();eC.current?.destroy()};
   },[]);
   useEffect(()=>{
-    if(!pC.current)return;
+    if(!pC.current||!h.ticks.length||tick%3!==0)return;
     pC.current.data.labels=h.ticks;
     pC.current.data.datasets=Object.values(h.pops).map(s=>({label:s.name,data:s.data.slice(-500),borderColor:`rgb(${s.color.join(',')})`,fill:false}));
     pC.current.update('none');
     dC.current.data.labels=h.ticks;dC.current.data.datasets[0].data=h.divs;dC.current.update('none');
     eC.current.data.labels=h.ticks;eC.current.data.datasets[0].data=h.temps;eC.current.data.datasets[1].data=h.co2s;eC.current.update('none');
-  },[h]);
+  },[tick]);
   return <div className="charts">
     <div className="ch"><h4>种群数量</h4><canvas ref={pR}/></div>
     <div className="ch"><h4>多样性指数</h4><canvas ref={dR}/></div>
@@ -479,7 +479,6 @@ function App(){
   const[events,setEvents]=useState([]);
   const[stateData,setStateData]=useState(null);
   const h=useRef({ticks:[],pops:{},divs:[],temps:[],co2s:[]});
-  const[,bump]=useState(0);
   const wsRef=useRef(null);
   const[runId,setRunId]=useState(null);
   const[runs,setRuns]=useState([]);
@@ -535,7 +534,6 @@ function App(){
     hr.divs.push(div);if(hr.divs.length>500)hr.divs.shift();
     hr.temps.push(s.environment?.temperature_mean??0);if(hr.temps.length>500)hr.temps.shift();
     hr.co2s.push(s.environment?.atmosphere?.CO2??0);if(hr.co2s.length>500)hr.co2s.shift();
-    bump(n=>n+1);
   },[]);
 
   const startSim=useCallback(async body=>{
@@ -611,7 +609,7 @@ function App(){
       </label>
     </div>
 
-    <Charts h={h.current}/>
+    <Charts h={h.current} tick={tick}/>
     <DataPanel state={stateData} events={events}/>
     <Setup visible={setup} onStart={startSim} onClose={()=>setSetup(false)}/>
 
