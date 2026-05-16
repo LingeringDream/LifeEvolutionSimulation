@@ -401,62 +401,57 @@ function Bar({label,value,max,color}){
 
 function DataPanel({state,events}){
   if(!state)return <div className="data-row"><div className="dc"><h4>等待数据...</h4></div></div>;
-  const env=state.environment||{};
-  const atm=env.atmosphere||{};
   const sp=state.species||[];
-
-  // Compute interaction summary
   const totalBio=sp.reduce((s,x)=>s+x.biomass,0);
-  const prodBio=sp.filter(x=>x.metabolic_type!=='heterotrophy').reduce((s,x)=>s+x.biomass,0);
-  const consBio=sp.filter(x=>x.metabolic_type==='heterotrophy').reduce((s,x)=>s+x.biomass,0);
-  const nProd=sp.filter(x=>x.metabolic_type!=='heterotrophy').length;
-  const nCons=sp.filter(x=>x.metabolic_type==='heterotrophy').length;
-
-  // Avg genes
-  const avgGenes={};
-  sp.forEach(s=>{if(s.genes)Object.entries(s.genes).forEach(([k,v])=>{if(typeof v==='number'){avgGenes[k]=(avgGenes[k]||0)+v/sp.length}})});
+  const div=sp.length>1?-sp.reduce((s,x)=>{const p=Math.max(x.biomass,0.001)/Math.max(totalBio,0.001);return s+p*Math.log(p)},0):0;
 
   return <div className="data-row">
-    {/* Card 1: Atmosphere */}
-    <div className="dc">
-      <h4>大气成分</h4>
-      <Bar label="O₂" value={atm.O2||0} max={0.5} color="#3fb950"/>
-      <Bar label="CO₂" value={atm.CO2||0} max={1.0} color="#d29922"/>
-      <Bar label="CH₄" value={atm.CH4||0} max={0.3} color="#f85149"/>
-      <Bar label="N₂" value={atm.N2||0} max={1.0} color="#58a6ff"/>
-      <div style={{fontSize:10,color:'var(--text2)',marginTop:6}}>气压: {(atm.Pressure||0).toFixed(2)} atm</div>
-    </div>
-
-    {/* Card 2: Interactions */}
-    <div className="dc">
-      <h4>生态交互</h4>
-      <Bar label="总生物量" value={totalBio} max={500} color="#3fb950"/>
-      <Bar label="生产者" value={prodBio} max={300} color="#2ea043"/>
-      <Bar label="消费者" value={consBio} max={200} color="#f85149"/>
-      <Bar label="资源均值" value={env.resources_mean||0} max={2} color="#58a6ff"/>
-      <Bar label="多样性" value={sp.length>1?-sp.reduce((s,x)=>{const p=Math.max(x.biomass,0.001)/Math.max(totalBio,0.001);return s+p*Math.log(p)},0):0} max={3} color="#d29922"/>
-      <div style={{fontSize:10,color:'var(--text2)',marginTop:6}}>物种: {nProd} 生产 + {nCons} 消费</div>
-    </div>
-
-    {/* Card 3: Species table */}
+    {/* Species table */}
     <div className="dc" style={{overflowX:'auto'}}>
-      <h4>物种详情</h4>
+      <h4>物种列表 ({sp.length})</h4>
       <table className="spt"><thead><tr>
-        <th>名称</th><th>生物量</th><th>代谢</th><th>食性</th>
+        <th>名称</th><th>生物量</th><th>代谢</th><th>食性</th><th>体型</th><th>繁殖</th>
       </tr></thead><tbody>
         {sp.map(s=><tr key={s.id}>
           <td><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:`rgb(${s.color.join(',')})`,marginRight:4}}/>{s.name}</td>
           <td>{s.biomass.toFixed(2)}</td>
           <td>{s.metabolic_type==='photosynthesis'?'光合':s.metabolic_type==='chemosynthesis'?'化能':'异养'}</td>
-          <td>{(s.genes?.diet_preference==='producer'?'生产':s.genes?.diet_preference==='consumer'?'消费':'杂食')||'-'}</td>
+          <td>{s.genes?.diet_preference==='producer'?'生产':s.genes?.diet_preference==='consumer'?'消费':'杂食'}</td>
+          <td>{(s.genes?.body_size??0).toFixed(1)}</td>
+          <td>{(s.genes?.reproduction_rate??0).toFixed(2)}</td>
         </tr>)}
       </tbody></table>
     </div>
 
-    {/* Card 4: Events */}
+    {/* Population stats */}
+    <div className="dc">
+      <h4>种群统计</h4>
+      <Bar label="总生物量" value={totalBio} max={500} color="#3fb950"/>
+      <Bar label="多样性H" value={div} max={3} color="#d29922"/>
+      <Bar label="生产者" value={sp.filter(x=>x.metabolic_type!=='heterotrophy').reduce((s,x)=>s+x.biomass,0)} max={300} color="#2ea043"/>
+      <Bar label="消费者" value={sp.filter(x=>x.metabolic_type==='heterotrophy').reduce((s,x)=>s+x.biomass,0)} max={200} color="#f85149"/>
+      <div style={{fontSize:10,color:'var(--text2)',marginTop:6}}>
+        生产者: {sp.filter(s=>s.metabolic_type!=='heterotrophy').length} |
+        消费者: {sp.filter(s=>s.metabolic_type==='heterotrophy').length}
+      </div>
+    </div>
+
+    {/* Species genes overview */}
+    <div className="dc">
+      <h4>基因概览 (种群均值)</h4>
+      {['body_size','temp_optimum','temp_tolerance','defense','mobility','adaptability'].map(k=>{
+        const vals=sp.map(s=>s.genes?.[k]).filter(v=>typeof v==='number');
+        const avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;
+        const labels={body_size:'体型',temp_optimum:'最适温',temp_tolerance:'耐温',defense:'防御',mobility:'移动',adaptability:'适应'};
+        const maxs={body_size:10,temp_optimum:500,temp_tolerance:150,defense:1,mobility:1,adaptability:1};
+        return <Bar key={k} label={labels[k]||k} value={avg} max={maxs[k]||1} color="#58a6ff"/>;
+      })}
+    </div>
+
+    {/* Events */}
     <div className="dc">
       <h4>事件日志</h4>
-      {(events||[]).slice(-12).reverse().map((e,i)=><div key={i} className="ei">
+      {(events||[]).slice(-15).reverse().map((e,i)=><div key={i} className="ei">
         <span className="et">[{e.tick}]</span>
         <span className="ety" style={{color:e.type==='extinction'?'var(--red)':e.type==='mutation'?'var(--orange)':e.type==='speciation'?'var(--green)':'var(--text2)'}}>
           {e.type==='extinction'?'灭绝':e.type==='mutation'?'突变':e.type==='speciation'?'分化':e.type==='ai_narrative'?'AI':e.type}
@@ -574,41 +569,42 @@ function App(){
     <WorldCanvas state={stateData} layer={layer}/>
 
     <div className="side">
-      <h3>物种</h3>
-      {species.map(sp=><div className="sp-c" key={sp.id}>
-        <div className="nm"><span className="dot" style={{background:`rgb(${sp.color.join(',')})`,width:10,height:10,borderRadius:'50%',display:'inline-block'}}/>{sp.name}</div>
-        <div className="dt">生物量: {sp.biomass.toFixed(2)} | {sp.metabolic_type==='photosynthesis'?'光合':sp.metabolic_type==='chemosynthesis'?'化能':'异养'}</div>
-      </div>)}
-      <h3>环境</h3>
+      <h3>环境参数</h3>
       <div className="env-g">
-        <div className="env-s"><div className="v">{(env.temperature_mean??0).toFixed(1)}°C</div><div className="l">温度</div></div>
-        <div className="env-s"><div className="v">{(env.resources_mean??0).toFixed(3)}</div><div className="l">资源</div></div>
-        <div className="env-s"><div className="v">{(env.atmosphere?.O2??0).toFixed(4)}</div><div className="l">氧气 O₂</div></div>
-        <div className="env-s"><div className="v">{(env.atmosphere?.CO2??0).toFixed(4)}</div><div className="l">二氧化碳 CO₂</div></div>
+        <div className="env-s"><div className="v">{(env.temperature_mean??0).toFixed(1)}°C</div><div className="l">平均温度</div></div>
+        <div className="env-s"><div className="v">{(env.resources_mean??0).toFixed(3)}</div><div className="l">资源丰度</div></div>
       </div>
-      <h3>事件日志</h3>
-      <div className="el">{events.slice(-8).reverse().map((e,i)=><div key={i}><b>[{e.tick}]</b> {e.type==='extinction'?'灭绝':e.type==='mutation'?'突变':e.type==='speciation'?'物种形成':e.type==='ai_narrative'?'AI叙事':e.type}: {e.desc}</div>)}</div>
-      {runId&&<><h3>数据导出</h3>
-        <div style={{display:'flex',gap:4,marginBottom:8}}>
-          <button style={{flex:1,padding:'5px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:11}}
-            onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/csv`,{method:'POST'});const d=await r.json();setExportMsg('CSV 已保存: '+d.dir);setTimeout(()=>setExportMsg(''),5000)}catch(e){setExportMsg('导出失败')}}}>导出 CSV</button>
-          <button style={{flex:1,padding:'5px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:11}}
-            onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/json`,{method:'POST'});const d=await r.json();setExportMsg('JSON 已保存: '+d.file);setTimeout(()=>setExportMsg(''),5000)}catch(e){setExportMsg('导出失败')}}}>导出 JSON</button>
-        </div>
-        {exportMsg&&<div style={{fontSize:11,color:'var(--green)',marginBottom:8}}>{exportMsg}</div>}
-      </>}
-      <h3>历史记录</h3>
-      <div className="el">{runs.slice(0,10).map(r=><div key={r.id} style={{cursor:'pointer'}} onClick={()=>window.open(`/api/runs/${r.id}/snapshots`,'_blank')}>
-        <b>#{r.id}</b> {r.planet} | {r.total_ticks||'…'} 步 | {r.status}
-      </div>)}</div>
-      <h3>自动存档</h3>
-      <label style={{fontSize:12,display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
+      <h3>大气成分</h3>
+      <Bar label="O₂" value={env.atmosphere?.O2||0} max={0.5} color="#3fb950"/>
+      <Bar label="CO₂" value={env.atmosphere?.CO2||0} max={1.0} color="#d29922"/>
+      <Bar label="CH₄" value={env.atmosphere?.CH4||0} max={0.3} color="#f85149"/>
+      <Bar label="N₂" value={env.atmosphere?.N2||0} max={1.0} color="#58a6ff"/>
+      <div style={{fontSize:10,color:'var(--text2)',marginTop:4}}>气压: {(env.atmosphere?.Pressure||0).toFixed(2)} atm</div>
+      <h3>交互指标</h3>
+      <Bar label="总生物量" value={species.reduce((s,x)=>s+x.biomass,0)} max={500} color="#3fb950"/>
+      <Bar label="物种数" value={species.length} max={20} color="#58a6ff"/>
+      <div style={{fontSize:10,color:'var(--text2)',marginTop:4}}>
+        生产者: {species.filter(s=>s.metabolic_type!=='heterotrophy').length} |
+        消费者: {species.filter(s=>s.metabolic_type==='heterotrophy').length}
+      </div>
+      <h3 style={{marginTop:10}}>数据管理</h3>
+      {runId&&<div style={{display:'flex',gap:4,marginBottom:6}}>
+        <button style={{flex:1,padding:'4px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:10}}
+          onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/csv`,{method:'POST'});const d=await r.json();setExportMsg('CSV: '+d.dir);setTimeout(()=>setExportMsg(''),4000)}catch(e){setExportMsg('失败')}}}>导出CSV</button>
+        <button style={{flex:1,padding:'4px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:10}}
+          onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/json`,{method:'POST'});const d=await r.json();setExportMsg('JSON: '+d.file);setTimeout(()=>setExportMsg(''),4000)}catch(e){setExportMsg('失败')}}}>导出JSON</button>
+      </div>}
+      {exportMsg&&<div style={{fontSize:10,color:'var(--green)',marginBottom:4}}>{exportMsg}</div>}
+      <label style={{fontSize:11,display:'flex',alignItems:'center',gap:5,cursor:'pointer',marginBottom:6}}>
         <input type="checkbox" checked={autoSave} onChange={e=>{
           setAutoSave(e.target.checked);
           fetch('/api/simulation/auto-save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:e.target.checked,interval:500})});
         }}/>
-        每 500 步自动存档
+        自动存档 (每500步)
       </label>
+      <div className="el">{runs.slice(0,5).map(r=><div key={r.id} style={{cursor:'pointer'}} onClick={()=>window.open(`/api/runs/${r.id}/snapshots`,'_blank')}>
+        <b>#{r.id}</b> {r.planet} | {r.total_ticks||'…'}步
+      </div>)}</div>
     </div>
 
     <Charts h={h.current} tick={tick}/>
