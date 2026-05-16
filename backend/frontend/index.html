@@ -12,7 +12,7 @@
 *{margin:0;padding:0;box-sizing:border-box}
 :root{--bg:#0d1117;--card:#161b22;--border:#30363d;--text:#c9d1d9;--text2:#8b949e;--accent:#58a6ff;--green:#3fb950;--red:#f85149;--orange:#d29922}
 body{font-family:'Segoe UI','Microsoft YaHei',system-ui,sans-serif;background:var(--bg);color:var(--text);overflow:hidden;height:100vh}
-.app{display:grid;grid-template-columns:1fr 300px;grid-template-rows:52px 1fr 190px;height:100vh;gap:1px;background:var(--border)}
+.app{display:grid;grid-template-columns:1fr 300px;grid-template-rows:52px 1fr 180px 260px;height:100vh;gap:1px;background:var(--border)}
 header{grid-column:1/-1;background:var(--card);display:flex;align-items:center;padding:0 16px;gap:12px}
 header h1{font-size:16px;font-weight:600;color:var(--accent);white-space:nowrap}
 header .st{font-size:12px;color:var(--text2);white-space:nowrap}
@@ -21,7 +21,7 @@ header .st{font-size:12px;color:var(--text2);white-space:nowrap}
 .ctrls button:hover{border-color:var(--accent)}
 .ctrls button.on{background:var(--accent);color:#000;border-color:var(--accent)}
 .ctrls select{padding:4px 6px}
-.world{background:#000;position:relative;overflow:hidden}
+.world{background:#0a0e14;position:relative;overflow:hidden}
 .world canvas{width:100%;height:100%;display:block}
 .side{background:var(--card);padding:12px;overflow-y:auto;font-size:12px}
 .side h3{font-size:12px;color:var(--accent);margin:0 0 6px;border-bottom:1px solid var(--border);padding-bottom:4px}
@@ -50,6 +50,21 @@ header .st{font-size:12px;color:var(--text2);white-space:nowrap}
 .go:hover{opacity:.9}
 .ai-s{border-top:1px solid var(--border);margin-top:12px;padding-top:12px}
 .ai-s h3{font-size:13px;color:var(--orange);margin-bottom:8px}
+.data-row{grid-column:1/-1;background:var(--card);display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:1px;padding:6px}
+.dc{background:var(--bg);border-radius:5px;padding:10px;overflow-y:auto}
+.dc h4{font-size:11px;color:var(--accent);margin-bottom:6px;border-bottom:1px solid var(--border);padding-bottom:4px}
+.br{display:flex;align-items:center;gap:6px;margin-bottom:4px;font-size:11px}
+.bl{width:55px;color:var(--text2);text-align:right;flex-shrink:0}
+.bt{flex:1;height:12px;background:var(--card);border-radius:3px;overflow:hidden}
+.bf{height:100%;border-radius:3px;transition:width 0.3s}
+.bv{width:45px;text-align:right;font-size:10px;color:var(--text);flex-shrink:0}
+.spt{width:100%;font-size:10px;border-collapse:collapse}
+.spt th{color:var(--text2);font-weight:500;text-align:left;padding:2px 4px;border-bottom:1px solid var(--border)}
+.spt td{padding:2px 4px;border-bottom:1px solid var(--border)}
+.ei{font-size:10px;padding:2px 0;border-bottom:1px solid var(--border);display:flex;gap:6px}
+.et{color:var(--text2);width:40px;flex-shrink:0}
+.ety{width:50px;flex-shrink:0;font-weight:600}
+.ed{color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 </style>
 </head>
 <body>
@@ -57,53 +72,158 @@ header .st{font-size:12px;color:var(--text2);white-space:nowrap}
 <script type="text/babel">
 const {useState,useEffect,useRef,useCallback}=React;
 
-function bioColor(v){const t=Math.min(v/3,1);return`rgb(${13+t*40|0},${17+t*160|0},${23+t*30|0})`}
-function tempColor(v){const t=Math.max(0,Math.min(1,(v+200)/400));return`rgb(${t*255|0},60,${(1-t)*255|0})`}
-function resColor(v){const t=Math.min(v/2,1);return`rgb(20,${40+t*180|0},30)`}
+/* ── Color maps ──────────────────────────────────────────────── */
+function lerp(a,b,t){return a+(b-a)*t}
+function clamp(v,mn,mx){return Math.max(mn,Math.min(mx,v))}
+
+function bioColorRGB(v){
+  const t=clamp(v/3,0,1);
+  // black → dark green → green → bright yellow-green
+  const r=lerp(8,200,t*t);
+  const g=lerp(15,230,Math.sqrt(t));
+  const b=lerp(25,60,t);
+  return[r,g,b];
+}
+function tempColorRGB(v){
+  const t=clamp((v+200)/500,0,1);
+  // deep blue → blue → cyan → green → yellow → orange → red
+  let r,g,b;
+  if(t<0.2){const u=t/0.2;r=lerp(10,30,u);g=lerp(20,80,u);b=lerp(180,220,u)}
+  else if(t<0.4){const u=(t-0.2)/0.2;r=lerp(30,20,u);g=lerp(80,180,u);b=lerp(220,200,u)}
+  else if(t<0.6){const u=(t-0.4)/0.2;r=lerp(20,120,u);g=lerp(180,220,u);b=lerp(200,60,u)}
+  else if(t<0.8){const u=(t-0.6)/0.2;r=lerp(120,240,u);g=lerp(220,180,u);b=lerp(60,20,u)}
+  else{const u=(t-0.8)/0.2;r=lerp(240,200,u);g=lerp(180,50,u);b=lerp(20,15,u)}
+  return[r,g,b];
+}
+function resColorRGB(v){
+  const t=clamp(v/2,0,1);
+  return[lerp(5,60,t),lerp(10,200,t*t),lerp(15,70,t)];
+}
+function toxinColorRGB(v){
+  const t=clamp(v/0.5,0,1);
+  // black → dark purple → magenta → bright red
+  return[lerp(10,200,t),lerp(5,40,t*t),lerp(20,80,t)];
+}
+function nutrientColorRGB(v){
+  const t=clamp(v/1.5,0,1);
+  // dark → brown → gold → bright yellow
+  return[lerp(15,240,t),lerp(10,200,t),lerp(5,40,t*t)];
+}
 
 /* ── WorldCanvas ─────────────────────────────────────────────── */
 function WorldCanvas({state,layer}){
   const cv=useRef(null),ct=useRef(null);
+
   useEffect(()=>{
-    const c=cv.current,p=ct.current;
-    if(!c||!p||!state||!state.grid_size)return;
+    const canvas=cv.current,box=ct.current;
+    if(!canvas||!box||!state||!state.grid_size)return;
     const gs=state.grid_size;
-    c.width=p.offsetWidth; c.height=p.offsetHeight;
-    const ctx=c.getContext('2d');
-    const cw=c.width/gs,ch=c.height/gs;
-    let grid,cm;
-    if(layer==='temperature'){grid=state.temperature;cm=tempColor}
-    else if(layer==='resources'){grid=state.resources;cm=resColor}
-    else{grid=state.total_biomass;cm=bioColor}
+
+    // Size canvas to container
+    const W=box.offsetWidth,H=box.offsetHeight;
+    canvas.width=W;canvas.height=H;
+    const ctx=canvas.getContext('2d');
+    const cw=W/gs,ch=H/gs;
+
+    // Select grid + color function
+    let grid,cmRGB;
+    if(layer==='temperature'){grid=state.temperature;cmRGB=tempColorRGB}
+    else if(layer==='resources'){grid=state.resources;cmRGB=resColorRGB}
+    else if(layer==='toxins'){grid=state.toxins;cmRGB=toxinColorRGB}
+    else if(layer==='nutrients'){grid=state.nutrients;cmRGB=nutrientColorRGB}
+    else{grid=state.total_biomass;cmRGB=bioColorRGB}
     if(!grid||!grid.length||!grid[0])return;
-    for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
-      ctx.fillStyle=cm(grid[y][x]);
-      ctx.fillRect(x*cw,y*ch,cw+.5,ch+.5);
+
+    // ── Draw heatmap (fillRect per cell, simple & reliable)
+    for(let y=0;y<gs;y++){
+      for(let x=0;x<gs;x++){
+        const[cr,cg,cb]=cmRGB(grid[y][x]);
+        ctx.fillStyle=`rgb(${clamp(cr,0,255)|0},${clamp(cg,0,255)|0},${clamp(cb,0,255)|0})`;
+        ctx.fillRect(x*cw|0,y*ch|0,cw+0.5|0,ch+0.5|0);
+      }
     }
+
+    // ── Draw species dots with glow
     if(layer==='biomass'&&state.species_layers){
-      for(const[,l]of Object.entries(state.species_layers)){
-        if(!l.biomass||!l.biomass[0])continue;
-        ctx.fillStyle=`rgb(${l.color.join(',')})`;
-        for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
-          const v=l.biomass[y]?l.biomass[y][x]:0;
-          if(v>0.05){
-            const r=Math.min(cw,ch)*0.3*Math.min(v,3);
-            ctx.beginPath();ctx.arc(x*cw+cw/2,y*ch+ch/2,Math.max(1,r),0,Math.PI*2);ctx.fill();
+      ctx.save();
+      ctx.globalCompositeOperation='lighter';
+      for(const[,lay]of Object.entries(state.species_layers)){
+        if(!lay.biomass||!lay.biomass[0])continue;
+        const[cr,cg,cb]=lay.color;
+        // Brighten color for glow
+        const br=Math.min(255,cr+60),bg=Math.min(255,cg+60),bb=Math.min(255,cb+60);
+        for(let y=0;y<gs;y++){
+          if(!lay.biomass[y])continue;
+          for(let x=0;x<gs;x++){
+            const v=lay.biomass[y][x];
+            if(v>0.03){
+              const cx=x*cw+cw/2,cy=y*ch+ch/2;
+              const baseR=Math.min(cw,ch)*0.45;
+              const r=baseR*Math.min(1+v*0.4,3);
+              const alpha=clamp(v*0.6,0.2,0.9);
+              // Outer glow (brighter)
+              const grad=ctx.createRadialGradient(cx,cy,r*0.1,cx,cy,r*2);
+              grad.addColorStop(0,`rgba(${br},${bg},${bb},${alpha})`);
+              grad.addColorStop(0.4,`rgba(${cr},${cg},${cb},${alpha*0.5})`);
+              grad.addColorStop(1,`rgba(${cr},${cg},${cb},0)`);
+              ctx.fillStyle=grad;
+              ctx.beginPath();ctx.arc(cx,cy,r*2,0,Math.PI*2);ctx.fill();
+              // Core dot (bright)
+              ctx.fillStyle=`rgba(${br},${bg},${bb},${clamp(alpha*1.8,0,1)})`;
+              ctx.beginPath();ctx.arc(cx,cy,Math.max(2,r*0.55),0,Math.PI*2);ctx.fill();
+              // Hot center for high biomass
+              if(v>1){
+                ctx.fillStyle=`rgba(255,255,255,${clamp((v-1)*0.3,0,0.5)})`;
+                ctx.beginPath();ctx.arc(cx,cy,Math.max(1,r*0.25),0,Math.PI*2);ctx.fill();
+              }
+            }
           }
         }
       }
+      ctx.restore();
     }
+
+    // ── Auto-scale range from actual data
+    let rMin=Infinity,rMax=-Infinity;
+    for(let y=0;y<gs;y++)for(let x=0;x<gs;x++){
+      const v=grid[y][x];if(v<rMin)rMin=v;if(v>rMax)rMax=v;
+    }
+    if(rMin===rMax){rMin-=1;rMax+=1}
+    // Add 5% padding
+    const pad=(rMax-rMin)*0.05;rMin-=pad;rMax+=pad;
+
+    // Legend
+    const labels={biomass:'生物量',temperature:'温度 °C',resources:'资源丰度',toxins:'毒素浓度',nutrients:'营养循环'};
+    const lx=10,ly=H-36,lw=160,lh=14;
+    ctx.fillStyle='rgba(0,0,0,0.55)';
+    ctx.fillRect(lx-4,ly-6,lw+8,lh+22);
+    for(let i=0;i<lw;i++){
+      const v=rMin+(i/lw)*(rMax-rMin);
+      const[cr,cg,cb]=cmRGB(v);
+      ctx.fillStyle=`rgb(${cr|0},${cg|0},${cb|0})`;
+      ctx.fillRect(lx+i,ly,1,lh);
+    }
+    ctx.fillStyle='rgba(255,255,255,0.85)';ctx.font='10px sans-serif';
+    ctx.fillText(String(rMin|0),lx,ly+lh+10);
+    ctx.textAlign='center';ctx.fillText(labels[layer]||'',lx+lw/2,ly+lh+10);
+    ctx.textAlign='right';ctx.fillText(String(rMax|0),lx+lw,ly+lh+10);
+    ctx.textAlign='left';
+
   },[state,layer]);
+
   useEffect(()=>{
-    const obs=new ResizeObserver(()=>{const c=cv.current,p=ct.current;if(c&&p){c.width=p.offsetWidth;c.height=p.offsetHeight}});
+    const obs=new ResizeObserver(()=>{
+      const c=cv.current,p=ct.current;if(c&&p){c.width=p.offsetWidth;c.height=p.offsetHeight}
+    });
     if(ct.current)obs.observe(ct.current);
     return()=>obs.disconnect();
   },[]);
+
   return <div className="world" ref={ct}><canvas ref={cv}/></div>;
 }
 
 /* ── Charts ──────────────────────────────────────────────────── */
-function Charts({h}){
+function Charts({h,tick}){
   const pR=useRef(null),dR=useRef(null),eR=useRef(null);
   const pC=useRef(null),dC=useRef(null),eC=useRef(null);
   useEffect(()=>{
@@ -114,18 +234,45 @@ function Charts({h}){
     return()=>{pC.current?.destroy();dC.current?.destroy();eC.current?.destroy()};
   },[]);
   useEffect(()=>{
-    if(!pC.current)return;
+    if(!pC.current||!h.ticks.length||tick%3!==0)return;
     pC.current.data.labels=h.ticks;
     pC.current.data.datasets=Object.values(h.pops).map(s=>({label:s.name,data:s.data.slice(-500),borderColor:`rgb(${s.color.join(',')})`,fill:false}));
     pC.current.update('none');
     dC.current.data.labels=h.ticks;dC.current.data.datasets[0].data=h.divs;dC.current.update('none');
     eC.current.data.labels=h.ticks;eC.current.data.datasets[0].data=h.temps;eC.current.data.datasets[1].data=h.co2s;eC.current.update('none');
-  },[h]);
+  },[tick]);
   return <div className="charts">
     <div className="ch"><h4>种群数量</h4><canvas ref={pR}/></div>
     <div className="ch"><h4>多样性指数</h4><canvas ref={dR}/></div>
     <div className="ch"><h4>环境指标</h4><canvas ref={eR}/></div>
   </div>;
+}
+
+/* ── Species Presets ─────────────────────────────────────────── */
+const SP_PRESETS={
+  photo_producer:{name:'光合生产者',metabolic_type:'photosynthesis',body_size:0.5,temp_optimum:25,temp_tolerance:40,reproduction_rate:1.0,reproduction_cost:0.5,defense:0.05,mobility:0,sensory_range:1,diet_preference:'producer',lifespan:800,adaptability:0.3},
+  chemo_producer:{name:'化能生产者',metabolic_type:'chemosynthesis',body_size:0.3,temp_optimum:-100,temp_tolerance:80,reproduction_rate:0.8,reproduction_cost:0.4,defense:0.02,mobility:0,sensory_range:1,diet_preference:'producer',lifespan:1200,adaptability:0.4},
+  herbivore:{name:'食草动物',metabolic_type:'heterotrophy',body_size:2.0,temp_optimum:20,temp_tolerance:30,reproduction_rate:0.4,reproduction_cost:2.0,defense:0.2,mobility:0.6,sensory_range:5,diet_preference:'consumer',lifespan:400,adaptability:0.3},
+  predator:{name:'捕食者',metabolic_type:'heterotrophy',body_size:4.0,temp_optimum:15,temp_tolerance:25,reproduction_rate:0.2,reproduction_cost:3.0,defense:0.4,mobility:0.8,sensory_range:8,diet_preference:'consumer',lifespan:600,adaptability:0.2},
+  omnivore:{name:'杂食者',metabolic_type:'heterotrophy',body_size:1.5,temp_optimum:10,temp_tolerance:50,reproduction_rate:0.5,reproduction_cost:1.5,defense:0.3,mobility:0.5,sensory_range:6,diet_preference:'omni',lifespan:500,adaptability:0.5},
+  extremophile:{name:'极端微生物',metabolic_type:'chemosynthesis',body_size:0.1,temp_optimum:-180,temp_tolerance:100,reproduction_rate:2.0,reproduction_cost:0.2,defense:0.01,mobility:0.05,sensory_range:1,diet_preference:'producer',lifespan:2000,adaptability:0.8},
+};
+
+const GENE_LABELS={
+  body_size:'体型',temp_optimum:'最适温度°C',temp_tolerance:'温度耐受°C',
+  reproduction_rate:'繁殖率',reproduction_cost:'繁殖消耗',defense:'防御力',
+  mobility:'移动速度',sensory_range:'感知范围',lifespan:'寿命',adaptability:'适应性',
+};
+const GENE_RANGES={
+  body_size:[0.1,10,0.1],temp_optimum:[-250,500,5],temp_tolerance:[5,150,1],
+  reproduction_rate:[0.01,3,0.05],reproduction_cost:[0.1,5,0.1],defense:[0,1,0.05],
+  mobility:[0,1,0.05],sensory_range:[1,15,1],lifespan:[10,2000,10],adaptability:[0,1,0.05],
+};
+
+function makeSpecies(name,preset){
+  const s=preset?{...SP_PRESETS[preset]}:{...SP_PRESETS.photo_producer,name:'新物种'};
+  if(name)s.name=name;
+  return s;
 }
 
 /* ── SetupPanel ──────────────────────────────────────────────── */
@@ -136,32 +283,69 @@ const PLANET_PRESETS={
   kepler442b:{name:'Kepler-442b',gravity:12.16,surface_temp:-2,albedo:0.3,axial_tilt:15,orbital_distance:0.409,atmospheric_pressure:1.5,co2_ratio:0.01,ch4_ratio:0.001,magnetic_field:1.2,season_period:112},
 };
 
+function SpeciesEditor({sp,onChange,onDelete}){
+  const[open,setOpen]=useState(false);
+  const metaLabel=sp.metabolic_type==='photosynthesis'?'光合':sp.metabolic_type==='chemosynthesis'?'化能':'异养';
+  const dietLabel=sp.diet_preference==='producer'?'生产':sp.diet_preference==='consumer'?'消费':'杂食';
+  return <div style={{background:'var(--bg)',border:'1px solid var(--border)',borderRadius:6,marginBottom:4}}>
+    <div style={{display:'flex',alignItems:'center',padding:'6px 8px',cursor:'pointer',gap:8}} onClick={()=>setOpen(!open)}>
+      <span style={{fontSize:12,flex:1}}>{sp.name} <span style={{color:'var(--text2)',fontSize:10}}>({metaLabel}/{dietLabel})</span></span>
+      <button style={{background:'var(--red)',color:'#fff',border:'none',borderRadius:3,padding:'2px 8px',cursor:'pointer',fontSize:10}} onClick={e=>{e.stopPropagation();onDelete()}}>删除</button>
+      <span style={{fontSize:10,color:'var(--text2)'}}>{open?'▲':'▼'}</span>
+    </div>
+    {open&&<div style={{padding:'4px 8px 8px',borderTop:'1px solid var(--border)'}}>
+      <div className="fr" style={{marginBottom:6}}><label style={{width:70}}>名称</label><input value={sp.name} onChange={e=>onChange({...sp,name:e.target.value})}/></div>
+      <div className="fr" style={{marginBottom:6}}><label style={{width:70}}>代谢</label><select value={sp.metabolic_type} onChange={e=>onChange({...sp,metabolic_type:e.target.value})}>
+        <option value="photosynthesis">光合</option><option value="chemosynthesis">化能</option><option value="heterotrophy">异养</option></select></div>
+      <div className="fr" style={{marginBottom:6}}><label style={{width:70}}>食性</label><select value={sp.diet_preference} onChange={e=>onChange({...sp,diet_preference:e.target.value})}>
+        <option value="producer">生产者</option><option value="consumer">消费者</option><option value="omni">杂食</option></select></div>
+      {Object.entries(GENE_LABELS).map(([k,label])=>{
+        const[min,max,step]=GENE_RANGES[k];
+        return <div key={k} className="fr" style={{marginBottom:4}}>
+          <label style={{width:70,fontSize:11}}>{label}</label>
+          <input type="range" min={min} max={max} step={step} value={sp[k]} onChange={e=>onChange({...sp,[k]:+e.target.value})} style={{flex:1}}/>
+          <span style={{width:50,textAlign:'right',fontSize:11,color:'var(--accent)'}}>{sp[k]}</span>
+        </div>;
+      })}
+    </div>}
+  </div>;
+}
+
 function Setup({onStart,onClose,visible}){
-  const[p,setP]=useState('titan'),[pr,setPr]=useState(2),[co,setCo]=useState(1),[gr,setGr]=useState(50);
+  const[p,setP]=useState('titan'),[gr,setGr]=useState(50);
   const[custom,setCustom]=useState({...PLANET_PRESETS.titan,planet_name:'Custom Planet'});
   const[envCfg,setEnvCfg]=useState(null);
   const[aiSel,setAiSel]=useState('');
-  useEffect(()=>{fetch('/api/config').then(r=>r.json()).then(c=>{
-    setEnvCfg(c);
-    if(c.provider)setAiSel(c.provider);
-  }).catch(()=>{})},[]);
+  const[species,setSpecies]=useState([
+    makeSpecies('生产者A','photo_producer'),
+    makeSpecies('化能菌','chemo_producer'),
+    makeSpecies('食草者','herbivore'),
+  ]);
+  const[showPresets,setShowPresets]=useState(false);
+  useEffect(()=>{fetch('/api/config').then(r=>r.json()).then(c=>{setEnvCfg(c);if(c.provider)setAiSel(c.provider)}).catch(()=>{})},[]);
 
   if(!visible)return null;
 
   const isCustom=p==='custom';
   const go=()=>{
     const c=envCfg||{};
-    const body={producers:pr,consumers:co,grid_size:gr,ai:aiSel||null,ai_model:null,ai_key:null,ai_base_url:null,ai_interval:c.ai_interval||60};
+    const body={grid_size:gr,ai:aiSel||null,ai_model:null,ai_key:null,ai_base_url:null,ai_interval:c.ai_interval||60,
+      custom_species:species.map((s,i)=>({...s,seed_area:i===0?'center':'random'}))};
     if(isCustom){body.planet='custom';body.custom_planet={...custom,name:custom.planet_name}}
     else{body.planet=p}
     onStart(body);
   };
 
   const C=custom;const setC=(k,v)=>setCustom({...C,[k]:v});
+  const addSp=(preset)=>{setSpecies([...species,makeSpecies('',preset)]);setShowPresets(false)};
+  const delSp=(i)=>setSpecies(species.filter((_,idx)=>idx!==i));
+  const updSp=(i,sp)=>setSpecies(species.map((s,idx)=>idx===i?sp:s));
 
   return <div className="ov">
-    <div className="pnl">
+    <div className="pnl" style={{maxHeight:'85vh',overflowY:'auto'}}>
       <h2>新建模拟</h2>
+
+      {/* Planet */}
       <div className="fr"><label>星球</label><select value={p} onChange={e=>setP(e.target.value)}>
         <option value="titan">土卫六 Titan (-179°C)</option><option value="mars">火星 Mars (-60°C)</option>
         <option value="europa">木卫二 Europa (-160°C)</option><option value="kepler442b">开普勒-442b (-2°C)</option>
@@ -184,8 +368,8 @@ function Setup({onStart,onClose,visible}){
             onClick={()=>setCustom({...v,planet_name:v.name})}>{v.name}</button>)}
         </div>
       </div>}
-      <div className="fr"><label>生产者</label><input type="number" value={pr} min={1} max={5} onChange={e=>setPr(+e.target.value)}/></div>
-      <div className="fr"><label>消费者</label><input type="number" value={co} min={0} max={5} onChange={e=>setCo(+e.target.value)}/></div>
+
+      {/* Grid + AI */}
       <div className="fr"><label>网格大小</label><select value={gr} onChange={e=>setGr(+e.target.value)}>
         <option value={30}>30×30</option><option value={50}>50×50</option><option value={80}>80×80</option></select></div>
       <div className="fr"><label>AI 引擎</label><select value={aiSel} onChange={e=>setAiSel(e.target.value)}>
@@ -194,8 +378,93 @@ function Setup({onStart,onClose,visible}){
         {envCfg&&envCfg.claude_key_set&&<option value="claude">Claude ({envCfg.claude_model})</option>}
         {envCfg&&envCfg.custom_key_set&&<option value="custom">{envCfg.custom_model||'Custom'} ({envCfg.custom_base_url})</option>}
       </select></div>
+
+      {/* Species */}
+      <div style={{borderTop:'1px solid var(--border)',marginTop:10,paddingTop:10}}>
+        <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
+          <span style={{fontSize:13,color:'var(--accent)',fontWeight:600}}>物种 ({species.length})</span>
+          <button style={{background:'var(--green)',color:'#000',border:'none',borderRadius:4,padding:'3px 10px',cursor:'pointer',fontSize:11}} onClick={()=>setShowPresets(!showPresets)}>+ 添加物种</button>
+        </div>
+        {showPresets&&<div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:4,marginBottom:8}}>
+          {Object.entries(SP_PRESETS).map(([k,v])=><button key={k} style={{padding:'5px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:10}}
+            onClick={()=>addSp(k)}>{v.name}</button>)}
+          <button style={{padding:'5px',background:'var(--bg)',border:'1px dashed var(--text2)',color:'var(--text2)',borderRadius:4,cursor:'pointer',fontSize:10}}
+            onClick={()=>addSp(null)}>空白物种</button>
+        </div>}
+        {species.map((sp,i)=><SpeciesEditor key={i} sp={sp} onChange={s=>updSp(i,s)} onDelete={()=>delSp(i)}/>)}
+      </div>
+
       <button className="go" onClick={go}>开始模拟</button>
       <button style={{width:'100%',padding:'8px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:7,cursor:'pointer',fontSize:13,marginTop:6}} onClick={()=>onClose()}>取消</button>
+    </div>
+  </div>;
+}
+
+/* ── DataPanel ───────────────────────────────────────────────── */
+function Bar({label,value,max,color}){
+  const pct=clamp(value/max*100,0,100);
+  return <div className="br"><span className="bl">{label}</span><div className="bt"><div className="bf" style={{width:pct+'%',background:color}}/></div><span className="bv">{value.toFixed(4)}</span></div>;
+}
+
+function DataPanel({state,events}){
+  if(!state)return <div className="data-row"><div className="dc"><h4>等待数据...</h4></div></div>;
+  const sp=state.species||[];
+  const totalBio=sp.reduce((s,x)=>s+x.biomass,0);
+  const div=sp.length>1?-sp.reduce((s,x)=>{const p=Math.max(x.biomass,0.001)/Math.max(totalBio,0.001);return s+p*Math.log(p)},0):0;
+
+  return <div className="data-row">
+    {/* Species table */}
+    <div className="dc" style={{overflowX:'auto'}}>
+      <h4>物种列表 ({sp.length})</h4>
+      <table className="spt"><thead><tr>
+        <th>名称</th><th>生物量</th><th>代谢</th><th>食性</th><th>体型</th><th>繁殖</th>
+      </tr></thead><tbody>
+        {sp.map(s=><tr key={s.id}>
+          <td><span style={{display:'inline-block',width:8,height:8,borderRadius:'50%',background:`rgb(${s.color.join(',')})`,marginRight:4}}/>{s.name}</td>
+          <td>{s.biomass.toFixed(2)}</td>
+          <td>{s.metabolic_type==='photosynthesis'?'光合':s.metabolic_type==='chemosynthesis'?'化能':'异养'}</td>
+          <td>{s.genes?.diet_preference==='producer'?'生产':s.genes?.diet_preference==='consumer'?'消费':'杂食'}</td>
+          <td>{(s.genes?.body_size??0).toFixed(1)}</td>
+          <td>{(s.genes?.reproduction_rate??0).toFixed(2)}</td>
+        </tr>)}
+      </tbody></table>
+    </div>
+
+    {/* Population stats */}
+    <div className="dc">
+      <h4>种群统计</h4>
+      <Bar label="总生物量" value={totalBio} max={500} color="#3fb950"/>
+      <Bar label="多样性H" value={div} max={3} color="#d29922"/>
+      <Bar label="生产者" value={sp.filter(x=>x.metabolic_type!=='heterotrophy').reduce((s,x)=>s+x.biomass,0)} max={300} color="#2ea043"/>
+      <Bar label="消费者" value={sp.filter(x=>x.metabolic_type==='heterotrophy').reduce((s,x)=>s+x.biomass,0)} max={200} color="#f85149"/>
+      <div style={{fontSize:10,color:'var(--text2)',marginTop:6}}>
+        生产者: {sp.filter(s=>s.metabolic_type!=='heterotrophy').length} |
+        消费者: {sp.filter(s=>s.metabolic_type==='heterotrophy').length}
+      </div>
+    </div>
+
+    {/* Species genes overview */}
+    <div className="dc">
+      <h4>基因概览 (种群均值)</h4>
+      {['body_size','temp_optimum','temp_tolerance','defense','mobility','adaptability'].map(k=>{
+        const vals=sp.map(s=>s.genes?.[k]).filter(v=>typeof v==='number');
+        const avg=vals.length?vals.reduce((a,b)=>a+b,0)/vals.length:0;
+        const labels={body_size:'体型',temp_optimum:'最适温',temp_tolerance:'耐温',defense:'防御',mobility:'移动',adaptability:'适应'};
+        const maxs={body_size:10,temp_optimum:500,temp_tolerance:150,defense:1,mobility:1,adaptability:1};
+        return <Bar key={k} label={labels[k]||k} value={avg} max={maxs[k]||1} color="#58a6ff"/>;
+      })}
+    </div>
+
+    {/* Events */}
+    <div className="dc">
+      <h4>事件日志</h4>
+      {(events||[]).slice(-15).reverse().map((e,i)=><div key={i} className="ei">
+        <span className="et">[{e.tick}]</span>
+        <span className="ety" style={{color:e.type==='extinction'?'var(--red)':e.type==='mutation'?'var(--orange)':e.type==='speciation'?'var(--green)':e.type==='status'?'var(--accent)':'var(--text2)'}}>
+          {e.type==='extinction'?'灭绝':e.type==='mutation'?'突变':e.type==='speciation'?'分化':e.type==='ai_narrative'?'AI':e.type==='status'?'状态':e.type}
+        </span>
+        <span className="ed">{e.desc}</span>
+      </div>)}
     </div>
   </div>;
 }
@@ -210,9 +479,9 @@ function App(){
   const[species,setSpecies]=useState([]);
   const[env,setEnv]=useState({});
   const[events,setEvents]=useState([]);
+  const[gpuInfo,setGpuInfo]=useState(null);
   const[stateData,setStateData]=useState(null);
   const h=useRef({ticks:[],pops:{},divs:[],temps:[],co2s:[]});
-  const[,bump]=useState(0);
   const wsRef=useRef(null);
   const[runId,setRunId]=useState(null);
   const[runs,setRuns]=useState([]);
@@ -244,6 +513,7 @@ function App(){
     connect();
     loadRuns();
     loadSaves();
+    fetch('/api/config').then(r=>r.json()).then(c=>setGpuInfo(c.gpu)).catch(()=>{});
   },[]);
 
   const send=useCallback((a,extra={})=>{
@@ -268,7 +538,6 @@ function App(){
     hr.divs.push(div);if(hr.divs.length>500)hr.divs.shift();
     hr.temps.push(s.environment?.temperature_mean??0);if(hr.temps.length>500)hr.temps.shift();
     hr.co2s.push(s.environment?.atmosphere?.CO2??0);if(hr.co2s.length>500)hr.co2s.shift();
-    bump(n=>n+1);
   },[]);
 
   const startSim=useCallback(async body=>{
@@ -285,7 +554,7 @@ function App(){
   return <div className="app">
     <header>
       <h1>外星球演化模拟器</h1>
-      <span className="st">周期 {tick} | {species.length} 物种 | {speed} 步/秒</span>
+      <span className="st">周期 {tick} | {species.length} 物种 | {speed} 步/秒 | {gpuInfo?gpuInfo.gpu_available?'GPU: '+((gpuInfo.device_name||'').trim()||'CuPy'):'CPU':'...'}</span>
       <div className="ctrls">
         <button className={running?'on':''} onClick={toggle}>{running?'暂停':'运行'}</button>
         <button onClick={()=>send('step')}>单步</button>
@@ -295,6 +564,7 @@ function App(){
         </select>
         <select value={layer} onChange={e=>setLayer(e.target.value)}>
           <option value="biomass">生物量</option><option value="temperature">温度</option><option value="resources">资源</option>
+          <option value="toxins">毒素</option><option value="nutrients">营养</option>
         </select>
         <button onClick={()=>setSetup(true)}>新建</button>
         <button onClick={async()=>{try{const r=await fetch('/api/saves',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:`存档 tick ${tick}`})});const d=await r.json();setSaveMsg('已保存: '+d.save_id);setTimeout(()=>setSaveMsg(''),3000);loadSaves()}catch(e){setSaveMsg('保存失败')}}}>存档</button>
@@ -306,44 +576,46 @@ function App(){
     <WorldCanvas state={stateData} layer={layer}/>
 
     <div className="side">
-      <h3>物种</h3>
-      {species.map(sp=><div className="sp-c" key={sp.id}>
-        <div className="nm"><span className="dot" style={{background:`rgb(${sp.color.join(',')})`,width:10,height:10,borderRadius:'50%',display:'inline-block'}}/>{sp.name}</div>
-        <div className="dt">生物量: {sp.biomass.toFixed(2)} | {sp.metabolic_type==='photosynthesis'?'光合':sp.metabolic_type==='chemosynthesis'?'化能':'异养'}</div>
-      </div>)}
-      <h3>环境</h3>
+      <h3>环境参数</h3>
       <div className="env-g">
-        <div className="env-s"><div className="v">{(env.temperature_mean??0).toFixed(1)}°C</div><div className="l">温度</div></div>
-        <div className="env-s"><div className="v">{(env.resources_mean??0).toFixed(3)}</div><div className="l">资源</div></div>
-        <div className="env-s"><div className="v">{(env.atmosphere?.O2??0).toFixed(4)}</div><div className="l">氧气 O₂</div></div>
-        <div className="env-s"><div className="v">{(env.atmosphere?.CO2??0).toFixed(4)}</div><div className="l">二氧化碳 CO₂</div></div>
+        <div className="env-s"><div className="v">{(env.temperature_mean??0).toFixed(1)}°C</div><div className="l">平均温度</div></div>
+        <div className="env-s"><div className="v">{(env.resources_mean??0).toFixed(3)}</div><div className="l">资源丰度</div></div>
       </div>
-      <h3>事件日志</h3>
-      <div className="el">{events.slice(-8).reverse().map((e,i)=><div key={i}><b>[{e.tick}]</b> {e.type==='extinction'?'灭绝':e.type==='mutation'?'突变':e.type==='speciation'?'物种形成':e.type==='ai_narrative'?'AI叙事':e.type}: {e.desc}</div>)}</div>
-      {runId&&<><h3>数据导出</h3>
-        <div style={{display:'flex',gap:4,marginBottom:8}}>
-          <button style={{flex:1,padding:'5px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:11}}
-            onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/csv`,{method:'POST'});const d=await r.json();setExportMsg('CSV 已保存: '+d.dir);setTimeout(()=>setExportMsg(''),5000)}catch(e){setExportMsg('导出失败')}}}>导出 CSV</button>
-          <button style={{flex:1,padding:'5px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:11}}
-            onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/json`,{method:'POST'});const d=await r.json();setExportMsg('JSON 已保存: '+d.file);setTimeout(()=>setExportMsg(''),5000)}catch(e){setExportMsg('导出失败')}}}>导出 JSON</button>
-        </div>
-        {exportMsg&&<div style={{fontSize:11,color:'var(--green)',marginBottom:8}}>{exportMsg}</div>}
-      </>}
-      <h3>历史记录</h3>
-      <div className="el">{runs.slice(0,10).map(r=><div key={r.id} style={{cursor:'pointer'}} onClick={()=>window.open(`/api/runs/${r.id}/snapshots`,'_blank')}>
-        <b>#{r.id}</b> {r.planet} | {r.total_ticks||'…'} 步 | {r.status}
-      </div>)}</div>
-      <h3>自动存档</h3>
-      <label style={{fontSize:12,display:'flex',alignItems:'center',gap:6,cursor:'pointer'}}>
+      <h3>大气成分</h3>
+      <Bar label="O₂" value={env.atmosphere?.O2||0} max={0.5} color="#3fb950"/>
+      <Bar label="CO₂" value={env.atmosphere?.CO2||0} max={1.0} color="#d29922"/>
+      <Bar label="CH₄" value={env.atmosphere?.CH4||0} max={0.3} color="#f85149"/>
+      <Bar label="N₂" value={env.atmosphere?.N2||0} max={1.0} color="#58a6ff"/>
+      <div style={{fontSize:10,color:'var(--text2)',marginTop:4}}>气压: {(env.atmosphere?.Pressure||0).toFixed(2)} atm</div>
+      <h3>交互指标</h3>
+      <Bar label="总生物量" value={species.reduce((s,x)=>s+x.biomass,0)} max={500} color="#3fb950"/>
+      <Bar label="物种数" value={species.length} max={20} color="#58a6ff"/>
+      <div style={{fontSize:10,color:'var(--text2)',marginTop:4}}>
+        生产者: {species.filter(s=>s.metabolic_type!=='heterotrophy').length} |
+        消费者: {species.filter(s=>s.metabolic_type==='heterotrophy').length}
+      </div>
+      <h3 style={{marginTop:10}}>数据管理</h3>
+      {runId&&<div style={{display:'flex',gap:4,marginBottom:6}}>
+        <button style={{flex:1,padding:'4px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:10}}
+          onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/csv`,{method:'POST'});const d=await r.json();setExportMsg('CSV: '+d.dir);setTimeout(()=>setExportMsg(''),4000)}catch(e){setExportMsg('失败')}}}>导出CSV</button>
+        <button style={{flex:1,padding:'4px',background:'var(--bg)',border:'1px solid var(--border)',color:'var(--text)',borderRadius:4,cursor:'pointer',fontSize:10}}
+          onClick={async()=>{try{const r=await fetch(`/api/runs/${runId}/export/json`,{method:'POST'});const d=await r.json();setExportMsg('JSON: '+d.file);setTimeout(()=>setExportMsg(''),4000)}catch(e){setExportMsg('失败')}}}>导出JSON</button>
+      </div>}
+      {exportMsg&&<div style={{fontSize:10,color:'var(--green)',marginBottom:4}}>{exportMsg}</div>}
+      <label style={{fontSize:11,display:'flex',alignItems:'center',gap:5,cursor:'pointer',marginBottom:6}}>
         <input type="checkbox" checked={autoSave} onChange={e=>{
           setAutoSave(e.target.checked);
           fetch('/api/simulation/auto-save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({enabled:e.target.checked,interval:500})});
         }}/>
-        每 500 步自动存档
+        自动存档 (每500步)
       </label>
+      <div className="el">{runs.slice(0,5).map(r=><div key={r.id} style={{cursor:'pointer'}} onClick={()=>window.open(`/api/runs/${r.id}/snapshots`,'_blank')}>
+        <b>#{r.id}</b> {r.planet} | {r.total_ticks||'…'}步
+      </div>)}</div>
     </div>
 
-    <Charts h={h.current}/>
+    <Charts h={h.current} tick={tick}/>
+    <DataPanel state={stateData} events={events}/>
     <Setup visible={setup} onStart={startSim} onClose={()=>setSetup(false)}/>
 
     {/* Load dialog */}

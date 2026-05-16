@@ -2,6 +2,7 @@ from __future__ import annotations
 import numpy as np
 from dataclasses import dataclass, field
 from simulation.models import Genome, MetabolicType
+from simulation.gpu_backend import to_numpy
 
 
 @dataclass
@@ -58,13 +59,28 @@ class Species:
             biomass[:] = initial_biomass * 0.1
             biomass += rng.uniform(0, 0.05, (grid_size, grid_size))
 
+        # Generate visually distinct color using HSL
+        # Hue range depends on metabolic type for semantic grouping
+        import colorsys
         meta_type = genome.get_enum("metabolic_type")
+        # Use species_id hash for deterministic but diverse hue
+        hue_seed = hash(species_id) % 1000 / 1000.0
+
         if meta_type == MetabolicType.PHOTOSYNTHESIS.value:
-            color = (50, 180, 50)
+            # Greens: hue 80-160
+            h = 0.22 + hue_seed * 0.22  # 80°-160°
+            s, l = 0.7 + hue_seed * 0.2, 0.35 + hue_seed * 0.15
         elif meta_type == MetabolicType.CHEMOSYNTHESIS.value:
-            color = (50, 100, 200)
+            # Blues/purples: hue 200-280
+            h = 0.55 + hue_seed * 0.22  # 200°-280°
+            s, l = 0.65 + hue_seed * 0.2, 0.4 + hue_seed * 0.15
         else:
-            color = (200, 80, 80)
+            # Reds/oranges/yellows: hue 0-60
+            h = hue_seed * 0.17  # 0°-60°
+            s, l = 0.7 + hue_seed * 0.2, 0.4 + hue_seed * 0.15
+
+        r, g, b = colorsys.hls_to_rgb(h, l, s)
+        color = (int(r * 255), int(g * 255), int(b * 255))
 
         return Species(
             id=species_id,
@@ -75,10 +91,14 @@ class Species:
         )
 
     def total_biomass(self) -> float:
-        return float(np.sum(self.biomass))
+        return float(to_numpy(self.biomass).sum())
 
     def is_alive(self) -> bool:
-        return self.total_biomass() > 0.001
+        try:
+            s = self.biomass.sum()
+            return float(s) > 0.001
+        except Exception:
+            return float(to_numpy(self.biomass).sum()) > 0.001
 
     def mean_fitness(self) -> float:
         return 0.5
