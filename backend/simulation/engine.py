@@ -147,6 +147,15 @@ class SimulationEngine:
         self.nutrients = self._diffuse(self.nutrients)
         self.toxins = self._diffuse(self.toxins) * 0.95
 
+        # ── 9. Periodic status events ─────────────────────────
+        if self.tick % 50 == 0:
+            alive = [s for s in self.species_list if s.is_alive()]
+            total_bio = sum(float(to_numpy(s.biomass).sum()) for s in alive)
+            desc = f"{len(alive)} 物种存活, 总生物量 {total_bio:.1f}, 温度 {float(to_numpy(self.env.temperature).mean()):.1f}°C"
+            self.events.append(EvolutionEvent(
+                tick=self.tick, event_type="status", description=desc,
+            ))
+
     def _process_species(self, sp: Species, total_biomass, producer_biomass, consumer_biomass, max_body_size):
         meta_type = sp.genome.get_enum("metabolic_type")
         body_size = sp.genome.get_float("body_size")

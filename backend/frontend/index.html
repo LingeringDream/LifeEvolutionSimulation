@@ -460,8 +460,8 @@ function DataPanel({state,events}){
       <h4>事件日志</h4>
       {(events||[]).slice(-15).reverse().map((e,i)=><div key={i} className="ei">
         <span className="et">[{e.tick}]</span>
-        <span className="ety" style={{color:e.type==='extinction'?'var(--red)':e.type==='mutation'?'var(--orange)':e.type==='speciation'?'var(--green)':'var(--text2)'}}>
-          {e.type==='extinction'?'灭绝':e.type==='mutation'?'突变':e.type==='speciation'?'分化':e.type==='ai_narrative'?'AI':e.type}
+        <span className="ety" style={{color:e.type==='extinction'?'var(--red)':e.type==='mutation'?'var(--orange)':e.type==='speciation'?'var(--green)':e.type==='status'?'var(--accent)':'var(--text2)'}}>
+          {e.type==='extinction'?'灭绝':e.type==='mutation'?'突变':e.type==='speciation'?'分化':e.type==='ai_narrative'?'AI':e.type==='status'?'状态':e.type}
         </span>
         <span className="ed">{e.desc}</span>
       </div>)}

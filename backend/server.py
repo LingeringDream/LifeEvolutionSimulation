@@ -26,7 +26,8 @@ def main():
     print("Open in browser to begin.")
 
     from api.app import app
-    uvicorn.run(app, host=args.host, port=args.port)
+    uvicorn.run(app, host=args.host, port=args.port,
+                ws_ping_interval=60, ws_ping_timeout=60, ws_max_size=16*1024*1024)
 
 
 if __name__ == "__main__":

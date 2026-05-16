@@ -264,21 +264,26 @@ async def api_set_auto_save(req: AutoSaveRequest):
 
 @app.websocket("/ws/simulation")
 async def ws_simulation(ws: WebSocket):
-    await ws.accept()
+    try:
+        await ws.accept()
+    except Exception:
+        return
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     sim.register_ws(queue)
     sim.set_event_loop(asyncio.get_event_loop())
 
-    # Send initial state + grid
-    state = sim.get_state()
-    if state:
-        await ws.send_json(state)
+    # Send initial state
+    try:
+        state = sim.get_state()
+        if state:
+            await ws.send_json(state)
+    except Exception:
+        pass
 
     async def sender():
-        """Forward simulation broadcasts to the client."""
         while True:
             try:
-                payload = await asyncio.wait_for(queue.get(), timeout=2.0)
+                payload = await asyncio.wait_for(queue.get(), timeout=3.0)
                 await ws.send_text(payload)
             except asyncio.TimeoutError:
                 try:
@@ -289,7 +294,6 @@ async def ws_simulation(ws: WebSocket):
                 break
 
     async def receiver():
-        """Handle client control messages."""
         while True:
             try:
                 msg = await ws.receive_text()
